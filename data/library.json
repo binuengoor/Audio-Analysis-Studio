@@ -1,1 +1,45 @@
-[]
+[
+  {
+    "id": "83d31d6f-cb68-47e7-8ed1-2e784834bcbc",
+    "filename": "test_upload.mp3",
+    "input_path": "test_upload.mp3",
+    "output_path": null,
+    "analysis": null,
+    "created_at": 1787256086.2769651,
+    "status": "uploaded"
+  },
+  {
+    "id": "201d1fc5-4a4c-4587-8eac-bb24f6f6f0b9",
+    "filename": "test_analyze.mp3",
+    "input_path": "test_analyze.mp3",
+    "output_path": null,
+    "analysis": {
+      "filename": "test_analyze.mp3",
+      "bpm": 120.0,
+      "bpm_confidence": 0.9,
+      "key_standard": "C Major",
+      "key_camelot": "8B",
+      "key_confidence": 0.8,
+      "duration": 180.0,
+      "chords": [
+        {
+          "start": 0.0,
+          "end": 2.0,
+          "chord": "C:maj"
+        }
+      ],
+      "quality": null
+    },
+    "created_at": 1787256086.28009,
+    "status": "completed"
+  },
+  {
+    "id": "b7b1c0c3-cbff-4e10-9cd7-64a7085e315a",
+    "filename": "test_process.mp3",
+    "input_path": "test_process.mp3",
+    "output_path": "8B - 128.0 - test_process.mp3",
+    "analysis": null,
+    "created_at": 1787256086.2855601,
+    "status": "uploaded"
+  }
+]

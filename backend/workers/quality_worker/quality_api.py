@@ -159,61 +159,95 @@ def calculate_mastering_metrics(audio_data: np.ndarray, rate: int) -> MasteringI
 
     return MasteringInfo(lufs=lufs, peak_db=peak_db)
 
-def analyze_authenticity_and_cutoff(file_path: str, stated_bitrate: int) -> tuple[int, str, str]:
+def analyze_authenticity_and_cutoff(file_path: str, codec: str, stated_bitrate: int) -> tuple[int, str, str]:
     """
-    Executes flac-detective or fallback spectral analysis to find cutoff frequency & verdict.
+    Executes flac-detective for FLAC files or high-accuracy STFT power spectrum analysis
+    to detect true brickwall cutoff frequency (Hz), estimated perceptual bitrate, and transcode verdict.
     Returns (cutoff_hz, estimated_bitrate_kbps, verdict).
     """
     cutoff_hz = 0
-    verdict = "GENUINE"
-    
-    # 1. Attempt analysis via flac-detective
-    temp_json = tempfile.mktemp(suffix=".json")
-    try:
-        cmd = [
-            "flac-detective",
-            "--advanced",
-            "--format", "json",
-            "--output", temp_json,
-            file_path
-        ]
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        if os.path.exists(temp_json):
-            with open(temp_json, "r") as f:
-                report = json.load(f)
-            if report.get("results") and len(report["results"]) > 0:
-                item = report["results"][0]
-                cutoff_hz = int(item.get("cutoff_freq", 0))
-                verdict = str(item.get("verdict", "AUTHENTIC")).upper()
-                if verdict in ("AUTHENTIC", "GENUINE_HIRES", "CLEAN"):
-                    verdict = "GENUINE"
-    except Exception as e:
-        print(f"flac-detective execution error: {e}")
-    finally:
-        if os.path.exists(temp_json):
-            try:
-                os.remove(temp_json)
-            except Exception:
-                pass
+    verdict = ""
+    is_lossless_container = codec.upper() in ("WAV", "FLAC", "AIFF", "ALAC")
 
-    # 2. Fallback to librosa spectral rolloff if cutoff was not detected
+    # 1. If FLAC format, attempt analysis via flac-detective
+    if codec.upper() == "FLAC":
+        temp_json = tempfile.mktemp(suffix=".json")
+        try:
+            cmd = [
+                "flac-detective",
+                "--advanced",
+                "--format", "json",
+                "--output", temp_json,
+                file_path
+            ]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if os.path.exists(temp_json):
+                with open(temp_json, "r") as f:
+                    report = json.load(f)
+                if report.get("results") and len(report["results"]) > 0:
+                    item = report["results"][0]
+                    cutoff_hz = int(item.get("cutoff_freq", 0))
+                    raw_verdict = str(item.get("verdict", "")).upper()
+                    if raw_verdict in ("AUTHENTIC", "GENUINE_HIRES", "CLEAN"):
+                        verdict = "GENUINE LOSSLESS"
+                    elif "FAKE" in raw_verdict or "TRANSCODE" in raw_verdict or "SUSPICIOUS" in raw_verdict:
+                        verdict = "SUSPICIOUS (Fake Lossless)"
+        except Exception as e:
+            print(f"flac-detective execution error: {e}")
+        finally:
+            if os.path.exists(temp_json):
+                try:
+                    os.remove(temp_json)
+                except Exception:
+                    pass
+
+    # 2. STFT Spectral Power Cutoff Analysis (for all formats or when flac-detective did not yield cutoff)
     if cutoff_hz <= 0:
         try:
-            y, sr = librosa.load(file_path, sr=None, mono=True, duration=45.0)
-            rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr, roll_percent=0.99)[0]
-            cutoff_hz = int(np.percentile(rolloff, 95))
-            if cutoff_hz >= 20000:
-                verdict = "GENUINE"
-            elif cutoff_hz < 18500 and stated_bitrate > 320:
-                verdict = "SUSPICIOUS"
-            else:
-                verdict = "GENUINE"
+            y, sr = librosa.load(file_path, sr=None, mono=True, duration=60.0)
+            n_fft = 2048
+            hop_length = 512
+            S = np.abs(librosa.stft(y, n_fft=n_fft, hop_length=hop_length))
+            S_db = librosa.amplitude_to_db(S, ref=np.max)
+            freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
+
+            # 90th percentile energy across time frames for each frequency bin
+            energy_profile = np.percentile(S_db, 90, axis=1)
+
+            # Search from Nyquist down to 8000 Hz for the highest frequency above the noise floor (-65 dB)
+            detected_cutoff = freqs[-1]
+            for i in range(len(freqs) - 1, 0, -1):
+                if freqs[i] < 8000:
+                    break
+                if energy_profile[i] > -65.0:
+                    detected_cutoff = freqs[i]
+                    break
+
+            cutoff_hz = int(detected_cutoff)
         except Exception as e:
-            print(f"Fallback rolloff error: {e}")
+            print(f"STFT cutoff detection error: {e}")
             cutoff_hz = 20500
-            verdict = "GENUINE"
 
     estimated_bitrate = map_perceptual_bitrate(cutoff_hz)
+
+    # 3. Contextual Authenticity & Transcode Verdict
+    if not verdict:
+        if is_lossless_container:
+            if cutoff_hz >= 20000:
+                verdict = "GENUINE LOSSLESS"
+            elif cutoff_hz >= 18500:
+                verdict = "NEAR LOSSLESS (20kHz Filtered)"
+            elif cutoff_hz >= 15000:
+                verdict = f"SUSPICIOUS ({estimated_bitrate}k Transcode)"
+            else:
+                verdict = f"FAKE LOSSLESS ({estimated_bitrate}k Transcode)"
+        else:
+            # Lossy container (MP3, AAC, OGG, etc.)
+            if stated_bitrate >= 320 and cutoff_hz < 17000:
+                verdict = f"SUSPICIOUS ({stated_bitrate}k container with {estimated_bitrate}k cutoff)"
+            else:
+                verdict = f"AUTHENTIC {codec.upper()}"
+
     return cutoff_hz, estimated_bitrate, verdict
 
 def generate_spectrogram(file_path: str, cutoff_hz: int, estimated_bitrate: str) -> str:
@@ -297,6 +331,7 @@ def analyze(request: AnalyzeRequest):
         # 4. Authenticity & Frequency Cutoff
         cutoff_hz, estimated_bitrate, verdict = analyze_authenticity_and_cutoff(
             file_path,
+            container.codec,
             container.stated_bitrate_kbps
         )
         authenticity = AuthenticityInfo(
