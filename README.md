@@ -21,11 +21,12 @@ A high-performance audio analysis dashboard powered by an asynchronous **multi-e
     - **Linear Spectrogram Generation:** High-resolution linear-frequency spectrogram plots with red dashed cutoff line overlay.
   - **API Gateway:** Lightweight, high-throughput FastAPI gateway orchestrating analysis workers in parallel using `asyncio.gather()`.
 
-- **Interactive Chord Progression Viewer:**
+- **Interactive & Collapsible Chord Progression Viewer:**
   - **Timeline View:** Horizontally scrollable timeline displaying timestamped chord blocks (`[0.0s - 1.3s] F#m`) with harmonic duration badges.
   - **Harmonic Flow View:** Summarized harmonic journey (e.g. `F#m → G# → C#m → C#`).
   - **Click-to-Seek Audio Sync:** Clicking any chord block jumps playback directly to that moment.
   - **Live Playback Tracking:** The active chord lights up in real time during waveform audio preview.
+  - **Collapsible Section:** Toggle section visibility on demand.
 
 - **Automated ID3 Metadata Tagging:**
   - Embedded `TBPM` (BPM tempo) and `TKEY` (Camelot Key / Standard Key) tags are automatically written directly into the file headers using `mutagen` on analysis and export.
@@ -38,6 +39,7 @@ A high-performance audio analysis dashboard powered by an asynchronous **multi-e
 - **Flexible Token-Based Renaming:**
   - Default naming convention: `{OriginalName} - {Key} - {BPM}`.
   - Presets for `{Camelot} - {BPM} - {OriginalName}` and `{BPM} - {Camelot} - {OriginalName}`.
+  - Interactive **"Available Tags"** tooltip with detailed token descriptions.
   - Preserves musical notation symbols (`#`, etc.) in generated filenames.
 
 - **Apple Silicon & Multi-Architecture Native Support:**
@@ -142,6 +144,22 @@ docker compose down
 ```bash
 pytest backend/tests/
 ```
+
+---
+
+## Acknowledgements & Upstream Projects
+
+Audio Analysis Studio is made possible thanks to the extraordinary open-source research and engineering community. Special attribution and gratitude go to the authors and maintainers of the following upstream projects:
+
+- **[BeatNet](https://github.com/mjhydri/BeatNet)** *(Mojtaba Heydari et al.)* – State-of-the-art joint beat and downbeat tracking using Dynamic Bayesian Networks and CRNNs.
+- **[MusicalKeyCNN](https://github.com/danielfriis/musical-key-cnn)** *(Daniel Friis et al.)* – Deep Convolutional Neural Network for accurate musical key and Camelot wheel estimation.
+- **[Madmom](https://github.com/CPJKU/madmom)** *(Department of Computational Perception, JKU Linz)* – Robust Python audio and music processing library powering CNN + CRF chord recognition.
+- **[FLAC Detective](https://github.com/aegis-technologies/flac-detective)** *(Aegis Technologies)* – Audio authenticity, frequency cutoff analysis, and fake lossless transcode detection.
+- **[PyLoudnorm](https://github.com/csteinmetz1/pyloudnorm)** *(Christian Steinmetz)* – ITU-R BS.1770-4 integrated loudness (LUFS) and true peak calculation.
+- **[Librosa](https://librosa.org/)** *(Brian McFee et al.)* – Feature extraction, STFT, and spectrogram generation.
+- **[Mutagen](https://github.com/quodlibet/mutagen)** *(Quod Libet team)* – High-fidelity audio metadata tagging and ID3v2 manipulation.
+- **[WaveSurfer.js](https://wavesurfer.xyz/)** – Interactive audio waveform rendering and synchronized web playback.
+- **[FastAPI](https://fastapi.tiangolo.com/)** *(Sebastián Ramírez)* & **[Uvicorn](https://www.uvicorn.org/)** – High-performance asynchronous REST API framework.
 
 ---
 

@@ -18,6 +18,7 @@ function App() {
   } = useAudioStore();
 
   const [renamePattern, setRenamePattern] = useState('{OriginalName} - {Key} - {BPM}');
+  const [showTagHelp, setShowTagHelp] = useState(false);
   const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
   const playerRef = useRef<WaveformPlayerHandle>(null);
 
@@ -52,8 +53,8 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-10 font-sans">
-      <div className="max-w-7xl mx-auto space-y-8">
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-10 font-sans flex flex-col justify-between">
+      <div className="max-w-7xl mx-auto space-y-8 w-full">
         
         {/* Top Header */}
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-900/60 p-6 rounded-2xl border border-slate-800 shadow-xl backdrop-blur-sm">
@@ -69,7 +70,7 @@ function App() {
                   Audio Analysis Studio
                 </h1>
                 <p className="text-slate-400 text-xs sm:text-sm mt-0.5">
-                  Multi-Engine Microservices • BeatNet BPM • MusicalKeyCNN Key • Madmom Chords
+                  Multi-Engine Microservices • BeatNet BPM • MusicalKeyCNN Key • Madmom Chords • WhatsMyBitrate Quality & Spectrograms • Mutagen ID3 Tagging
                 </p>
               </div>
             </div>
@@ -86,7 +87,7 @@ function App() {
         {/* Top Section: Upload & Active Analysis */}
         <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           
-          {/* Left Column: Upload & Quick Track Status */}
+          {/* Left Column: Upload, Track Summary & Renaming Pattern */}
           <div className="lg:col-span-4 space-y-6">
             <UploadZone />
 
@@ -143,9 +144,117 @@ function App() {
                 )}
               </div>
             )}
+
+            {/* Output Filename Pattern Box (Moved under Selected Track) */}
+            {activeAnalysis && (
+              <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow-xl space-y-4">
+                <div>
+                  <div className="flex justify-between items-center mb-1.5 relative">
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      Output Filename Pattern
+                    </label>
+
+                    {/* More Info Hover / Click Tooltip */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setShowTagHelp(!showTagHelp)}
+                        onMouseEnter={() => setShowTagHelp(true)}
+                        onMouseLeave={() => setShowTagHelp(false)}
+                        className="text-[11px] text-purple-300 hover:text-purple-200 flex items-center gap-1 bg-purple-950/40 hover:bg-purple-900/50 px-2 py-0.5 rounded border border-purple-500/30 transition-colors"
+                      >
+                        <span>ℹ️</span> Available Tags
+                      </button>
+
+                      {showTagHelp && (
+                        <div className="absolute right-0 top-6 w-64 bg-slate-950 border border-purple-500/40 rounded-xl p-3 shadow-2xl z-50 text-xs space-y-2 backdrop-blur-md">
+                          <div className="font-bold text-purple-300 border-b border-slate-800 pb-1">
+                            Available Filename Tokens:
+                          </div>
+                          <ul className="space-y-1.5 text-slate-300 text-[11px]">
+                            <li>
+                              <code className="text-emerald-300 font-mono font-semibold">{`{OriginalName}`}</code>
+                              <p className="text-slate-400 text-[10px]">Original uploaded filename</p>
+                            </li>
+                            <li>
+                              <code className="text-blue-300 font-mono font-semibold">{`{Key}`}</code>
+                              <p className="text-slate-400 text-[10px]">Standard Key (e.g. C# minor, F major)</p>
+                            </li>
+                            <li>
+                              <code className="text-purple-300 font-mono font-semibold">{`{Camelot}`}</code>
+                              <p className="text-slate-400 text-[10px]">Camelot Wheel (e.g. 12A, 7B)</p>
+                            </li>
+                            <li>
+                              <code className="text-amber-300 font-mono font-semibold">{`{BPM}`}</code>
+                              <p className="text-slate-400 text-[10px]">Detected tempo (e.g. 125.0)</p>
+                            </li>
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <input
+                    type="text"
+                    value={renamePattern}
+                    onChange={(e) => setRenamePattern(e.target.value)}
+                    className="w-full border border-slate-700 rounded-xl px-3.5 py-2 text-sm bg-slate-950 text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 transition-colors font-mono"
+                    placeholder="{OriginalName} - {Key} - {BPM}"
+                  />
+                </div>
+
+                {/* Quick Pattern Presets */}
+                <div className="space-y-1.5">
+                  <span className="text-slate-400 text-[11px] font-semibold block">Presets:</span>
+                  <div className="flex flex-col gap-1.5">
+                    <button
+                      onClick={() => setRenamePattern('{OriginalName} - {Key} - {BPM}')}
+                      className={`px-2.5 py-1.5 rounded-lg border text-left text-[11px] transition-colors ${
+                        renamePattern === '{OriginalName} - {Key} - {BPM}'
+                          ? 'bg-purple-600/30 text-purple-200 border-purple-500/50 font-bold'
+                          : 'bg-slate-950 text-slate-300 border-slate-800 hover:text-white hover:border-slate-700'
+                      }`}
+                    >
+                      {`{OriginalName} - {Key} - {BPM}`} (Default)
+                    </button>
+                    <button
+                      onClick={() => setRenamePattern('{Camelot} - {BPM} - {OriginalName}')}
+                      className={`px-2.5 py-1.5 rounded-lg border text-left text-[11px] transition-colors ${
+                        renamePattern === '{Camelot} - {BPM} - {OriginalName}'
+                          ? 'bg-purple-600/30 text-purple-200 border-purple-500/50 font-bold'
+                          : 'bg-slate-950 text-slate-300 border-slate-800 hover:text-white hover:border-slate-700'
+                      }`}
+                    >
+                      {`{Camelot} - {BPM} - {OriginalName}`}
+                    </button>
+                    <button
+                      onClick={() => setRenamePattern('{BPM} - {Camelot} - {OriginalName}')}
+                      className={`px-2.5 py-1.5 rounded-lg border text-left text-[11px] transition-colors ${
+                        renamePattern === '{BPM} - {Camelot} - {OriginalName}'
+                          ? 'bg-purple-600/30 text-purple-200 border-purple-500/50 font-bold'
+                          : 'bg-slate-950 text-slate-300 border-slate-800 hover:text-white hover:border-slate-700'
+                      }`}
+                    >
+                      {`{BPM} - {Camelot} - {OriginalName}`}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Save to Library Action Button */}
+                <button
+                  onClick={handleProcess}
+                  className="w-full bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Save to Library
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Right Column: Key/BPM Cards, Chords & Waveform Player */}
+          {/* Right Column: Key/BPM Cards, Chords, Waveform & Quality Specs */}
           <div className="lg:col-span-8 space-y-6">
             {activeTitle ? (
               <div className="space-y-6">
@@ -201,89 +310,8 @@ function App() {
                   <div className="bg-slate-900/60 p-8 rounded-2xl border border-slate-800 text-center space-y-3">
                     <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-500"></div>
                     <p className="text-sm font-semibold text-slate-300">
-                      Analyzing audio with AI models (BeatNet, MusicalKeyCNN, Madmom)...
+                      Analyzing audio with AI models (BeatNet, MusicalKeyCNN, Madmom, Quality Engine)...
                     </p>
-                  </div>
-                )}
-
-                {/* Chord Progression Interactive Section */}
-                {activeAnalysis && activeAnalysis.chords && (
-                  <ChordProgression
-                    chords={activeAnalysis.chords}
-                    onSeek={handleSeek}
-                    currentTime={currentPlaybackTime}
-                  />
-                )}
-
-                {/* Audio Quality & Mastering Specs */}
-                {activeAnalysis && activeAnalysis.quality && (
-                  <QualityAnalysis quality={activeAnalysis.quality} />
-                )}
-
-                {/* File Renaming & ID3 Embedding Bar */}
-                {activeAnalysis && (
-                  <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow-xl space-y-4">
-                    <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
-                      <div className="flex-1 relative">
-                        <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-                          Output Filename Pattern
-                        </label>
-                        <input
-                          type="text"
-                          value={renamePattern}
-                          onChange={(e) => setRenamePattern(e.target.value)}
-                          className="w-full border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm bg-slate-950 text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 transition-colors font-mono"
-                          placeholder="{OriginalName} - {Key} - {BPM}"
-                        />
-                      </div>
-
-                      <div className="sm:self-end">
-                        <button
-                          onClick={handleProcess}
-                          className="w-full sm:w-auto bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 px-5 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                          </svg>
-                          Save to Library
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Quick Pattern Presets */}
-                    <div className="flex flex-wrap items-center gap-2 text-xs">
-                      <span className="text-slate-400 text-[11px] font-semibold">Presets:</span>
-                      <button
-                        onClick={() => setRenamePattern('{OriginalName} - {Key} - {BPM}')}
-                        className={`px-2.5 py-1 rounded-lg border text-[11px] transition-colors ${
-                          renamePattern === '{OriginalName} - {Key} - {BPM}'
-                            ? 'bg-purple-600/30 text-purple-200 border-purple-500/50 font-bold'
-                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
-                        }`}
-                      >
-                        {`{OriginalName} - {Key} - {BPM}`} (Default)
-                      </button>
-                      <button
-                        onClick={() => setRenamePattern('{Camelot} - {BPM} - {OriginalName}')}
-                        className={`px-2.5 py-1 rounded-lg border text-[11px] transition-colors ${
-                          renamePattern === '{Camelot} - {BPM} - {OriginalName}'
-                            ? 'bg-purple-600/30 text-purple-200 border-purple-500/50 font-bold'
-                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
-                        }`}
-                      >
-                        {`{Camelot} - {BPM} - {OriginalName}`}
-                      </button>
-                      <button
-                        onClick={() => setRenamePattern('{BPM} - {Camelot} - {OriginalName}')}
-                        className={`px-2.5 py-1 rounded-lg border text-[11px] transition-colors ${
-                          renamePattern === '{BPM} - {Camelot} - {OriginalName}'
-                            ? 'bg-purple-600/30 text-purple-200 border-purple-500/50 font-bold'
-                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
-                        }`}
-                      >
-                        {`{BPM} - {Camelot} - {OriginalName}`}
-                      </button>
-                    </div>
                   </div>
                 )}
 
@@ -297,6 +325,21 @@ function App() {
                     />
                   </div>
                 )}
+
+                {/* Chord Progression Interactive Section (Collapsible) */}
+                {activeAnalysis && activeAnalysis.chords && (
+                  <ChordProgression
+                    chords={activeAnalysis.chords}
+                    onSeek={handleSeek}
+                    currentTime={currentPlaybackTime}
+                  />
+                )}
+
+                {/* Audio Quality & Mastering Specs (Collapsible) */}
+                {activeAnalysis && activeAnalysis.quality && (
+                  <QualityAnalysis quality={activeAnalysis.quality} />
+                )}
+
               </div>
             ) : (
               <div className="h-full min-h-[300px] flex flex-col items-center justify-center text-slate-500 border-2 border-dashed border-slate-800 rounded-2xl p-12 bg-slate-900/40 text-center">
@@ -314,6 +357,30 @@ function App() {
         <section className="pt-4">
           <Library />
         </section>
+
+        {/* Footer */}
+        <footer className="mt-12 pt-8 border-t border-slate-800/80 text-center text-xs text-slate-500 space-y-3">
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <span>Built with ❤️ for music creators, DJs, and audio engineers.</span>
+            <span className="text-slate-700">•</span>
+            <span>Special thanks to the awesome open-source community & upstream audio intelligence projects.</span>
+          </div>
+          <div className="flex items-center justify-center gap-4 text-slate-400 text-[11px]">
+            <a
+              href="https://github.com/binuengoor/Audio-Analysis-Studio"
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-purple-300 transition-colors flex items-center gap-1.5 font-medium"
+            >
+              <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
+              </svg>
+              GitHub Repository
+            </a>
+            <span className="text-slate-700">•</span>
+            <span>MIT License</span>
+          </div>
+        </footer>
 
       </div>
     </div>
