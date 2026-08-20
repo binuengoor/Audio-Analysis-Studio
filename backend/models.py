@@ -1,10 +1,32 @@
 from pydantic import BaseModel
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 
 class ChordSegment(BaseModel):
     start: float
     end: float
     chord: str
+
+class ContainerInfo(BaseModel):
+    codec: str
+    stated_bitrate_kbps: int
+    sample_rate_hz: int
+    bit_depth: int
+    channels: int
+
+class MasteringInfo(BaseModel):
+    lufs: float
+    peak_db: float
+
+class AuthenticityInfo(BaseModel):
+    cutoff_hz: int
+    estimated_bitrate_kbps: str
+    verdict: str
+
+class QualityResult(BaseModel):
+    container: ContainerInfo
+    mastering: MasteringInfo
+    authenticity: AuthenticityInfo
+    spectrogram_image_path: str
 
 class AnalysisResult(BaseModel):
     filename: Optional[str] = None
@@ -15,6 +37,7 @@ class AnalysisResult(BaseModel):
     key_confidence: float = 0.95
     duration: float = 0.0
     chords: List[ChordSegment] = []
+    quality: Optional[QualityResult] = None
 
 class AnalyzeRequest(BaseModel):
     filename: Optional[str] = None

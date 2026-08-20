@@ -1,8 +1,8 @@
-# Audio Analysis Studio – Key, BPM & Chord Progression
+# Audio Analysis Studio – Key, BPM, Chords & Quality Inspection
 
 ![Publish Docker images](https://github.com/binuengoor/Audio-Analysis-Key-BPM/actions/workflows/docker-publish.yml/badge.svg)
 
-A high-performance audio analysis dashboard powered by an asynchronous **multi-engine microservices architecture** and a modern React dark-themed UI. Drop in any audio track, inspect BPM, Camelot Key, Standard Key, and interactive chord progression timelines, automatically embed ID3 metadata tags, and curate your audio library.
+A high-performance audio analysis dashboard powered by an asynchronous **multi-engine microservices architecture** and a modern React dark-themed UI. Drop in any audio track, inspect BPM, Camelot Key, Standard Key, interactive chord progression timelines, master loudness (LUFS), frequency cutoffs, fake-lossless transcode verdicts, linear-frequency spectrograms, and automatically embed ID3 metadata tags.
 
 ![Audio Analysis Studio Dashboard](docs/images/dashboard_full.png)
 
@@ -14,6 +14,11 @@ A high-performance audio analysis dashboard powered by an asynchronous **multi-e
   - **Tempo & BPM Detection:** [BeatNet](https://github.com/mjhydri/BeatNet) state-of-the-art DBN (Dynamic Bayesian Network) beat and downbeat tracking engine.
   - **Key & Camelot Detection:** [MusicalKeyCNN](https://github.com/danielfriis/musical-key-cnn) deep neural network predicting both Camelot wheel notations (`12A`, `8B`, etc.) and Standard Key (`C# minor`, `F major`, etc.).
   - **Chord Progression Recognition:** [Madmom](https://github.com/CPJKU/madmom) CNN + CRF (Conditional Random Field) chord segmentation and harmonic progression modeling.
+  - **Audio Quality & Bitrate Engine:** "WhatsMyBitrate"-style inspection via `flac-detective`, `pyloudnorm`, `soundfile`, and `mutagen` extracting:
+    - **Container Properties:** Codec (`FLAC`, `WAV`, `MP3`), bit depth (`16-bit`, `24-bit`, `32-bit`), sample rate (`44.1 kHz`, `48.0 kHz`), channels (`Stereo`/`Mono`), and stated bit rate.
+    - **Mastering Metrics:** Integrated **LUFS** loudness and sample/true peak in **dBFS**.
+    - **Authenticity & Cutoff:** True frequency cutoff (Hz), transcode verdict (`GENUINE`, `SUSPICIOUS`), and perceptual bitrate estimate (`64`, `128`, `192`, `320`, `Lossless`).
+    - **Linear Spectrogram Generation:** High-resolution linear-frequency spectrogram plots with red dashed cutoff line overlay.
   - **API Gateway:** Lightweight, high-throughput FastAPI gateway orchestrating analysis workers in parallel using `asyncio.gather()`.
 
 - **Interactive Chord Progression Viewer:**
@@ -26,8 +31,8 @@ A high-performance audio analysis dashboard powered by an asynchronous **multi-e
   - Embedded `TBPM` (BPM tempo) and `TKEY` (Camelot Key / Standard Key) tags are automatically written directly into the file headers using `mutagen` on analysis and export.
 
 - **Unified Single-Page Dashboard:**
-  - Ingestion drop-zone, real-time batch queueing, active track analysis, and library management consolidated onto a single page.
-  - Clicking any track in the library instantly loads its analysis, waveform preview, and chord progression front-and-center without triggering unnecessary re-analysis.
+  - Ingestion drop-zone, real-time batch queueing, active track analysis, quality specs, spectrogram, and library management consolidated onto a single page.
+  - Clicking any track in the library instantly loads its analysis, waveform preview, chord progression, and spectrogram without triggering unnecessary re-analysis.
   - Dedicated **"Re-analyze"** button to force re-processing on demand.
 
 - **Flexible Token-Based Renaming:**
@@ -43,32 +48,32 @@ A high-performance audio analysis dashboard powered by an asynchronous **multi-e
 ## Architecture Overview
 
 ```
-                          ┌──────────────────────────┐
-                          │   Frontend (React/Vite)  │
-                          │   http://localhost:3000   │
-                          └─────────────┬────────────┘
-                                        │ HTTP
-                                        ▼
-                          ┌──────────────────────────┐
-                          │   API Gateway (FastAPI)  │
-                          │   http://localhost:8000   │
-                          └──────┬──────┬──────┬─────┘
-                                 │      │      │  (asyncio.gather)
-             ┌───────────────────┘      │      └───────────────────┐
-             ▼                          ▼                          ▼
- ┌───────────────────────┐  ┌───────────────────────┐  ┌───────────────────────┐
- │       BPM Worker      │  │       Key Worker      │  │      Chord Worker     │
- │       (BeatNet)       │  │    (MusicalKeyCNN)    │  │        (Madmom)       │
- │      Port: 8001       │  │       Port: 8002      │  │       Port: 8003      │
- └───────────────────────┘  └───────────────────────┘  └───────────────────────┘
-             │                          │                          │
-             └──────────────────────────┴──────────────────────────┘
-                                        │
-                                        ▼
-                          ┌──────────────────────────┐
-                          │    Shared Audio Volume   │
-                          │  /app/data/shared_audio  │
-                          └──────────────────────────┘
+                                ┌──────────────────────────┐
+                                │   Frontend (React/Vite)  │
+                                │   http://localhost:3000   │
+                                └─────────────┬────────────┘
+                                              │ HTTP
+                                              ▼
+                                ┌──────────────────────────┐
+                                │   API Gateway (FastAPI)  │
+                                │   http://localhost:8000   │
+                                └──────┬───┬───┬───┬───────┘
+                                       │   │   │   │  (asyncio.gather)
+             ┌─────────────────────────┘   │   │   └─────────────────────────┐
+             ▼                             ▼   │                             ▼
+ ┌───────────────────────┐  ┌───────────────────▼───┐  ┌───────────────────────┐  ┌───────────────────────┐
+ │       BPM Worker      │  │       Key Worker      │  │      Chord Worker     │  │     Quality Worker    │
+ │       (BeatNet)       │  │    (MusicalKeyCNN)    │  │        (Madmom)       │  │ (WhatsMyBitrate/LUFS) │
+ │      Port: 8001       │  │       Port: 8002      │  │       Port: 8003      │  │      Port: 8004       │
+ └───────────────────────┘  └───────────────────────┘  └───────────────────────┘  └───────────────────────┘
+             │                          │                          │                          │
+             └──────────────────────────┴──────────────────────────┴──────────────────────────┘
+                                                       │
+                                                       ▼
+                                         ┌──────────────────────────┐
+                                         │    Shared Audio Volume   │
+                                         │  /app/data/shared_audio  │
+                                         └──────────────────────────┘
 ```
 
 ---
@@ -91,6 +96,7 @@ docker compose up -d
 * **BPM Worker:** [http://localhost:8001](http://localhost:8001)
 * **Key Worker:** [http://localhost:8002](http://localhost:8002)
 * **Chord Worker:** [http://localhost:8003](http://localhost:8003)
+* **Quality Worker:** [http://localhost:8004](http://localhost:8004)
 
 To stop all services:
 ```bash
@@ -116,7 +122,7 @@ docker compose down
 | :--- | :--- | :--- |
 | `GET` | `/` | Gateway health check |
 | `POST` | `/api/upload` | Upload audio file to shared ingestion storage |
-| `POST` | `/api/analyze` | Run parallel multi-engine analysis on audio track |
+| `POST` | `/api/analyze` | Run 4-engine parallel analysis across all microservices |
 | `POST` | `/api/reanalyze` | Force re-analysis of an existing library audio file |
 | `POST` | `/api/queue` | Add a batch list of audio filenames to processing queue |
 | `GET` | `/api/status` | Get real-time batch processing progress |
@@ -136,15 +142,6 @@ docker compose down
 ```bash
 pytest backend/tests/
 ```
-
----
-
-## Contributing
-
-1. Fork the repository and create your branch from `main`.
-2. Ensure automated tests pass (`pytest backend/tests/`).
-3. Ensure frontend builds cleanly (`npm --prefix frontend run build`).
-4. Submit a Pull Request.
 
 ---
 

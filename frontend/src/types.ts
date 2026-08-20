@@ -4,6 +4,32 @@ export interface ChordSegment {
   chord: string;
 }
 
+export interface ContainerInfo {
+  codec: string;
+  stated_bitrate_kbps: number;
+  sample_rate_hz: number;
+  bit_depth: number;
+  channels: number;
+}
+
+export interface MasteringInfo {
+  lufs: number;
+  peak_db: number;
+}
+
+export interface AuthenticityInfo {
+  cutoff_hz: number;
+  estimated_bitrate_kbps: string;
+  verdict: string;
+}
+
+export interface QualityResult {
+  container: ContainerInfo;
+  mastering: MasteringInfo;
+  authenticity: AuthenticityInfo;
+  spectrogram_image_path: string;
+}
+
 export interface AnalysisResult {
   filename?: string;
   bpm: number;
@@ -13,6 +39,7 @@ export interface AnalysisResult {
   key_confidence: number;
   duration: number;
   chords?: ChordSegment[];
+  quality?: QualityResult;
 }
 
 export interface AudioFile {

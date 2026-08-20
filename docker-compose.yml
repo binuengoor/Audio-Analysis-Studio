@@ -19,6 +19,23 @@ services:
       - bpm-worker
       - key-worker
       - chord-worker
+      - quality-worker
+
+  quality-worker:
+    build: ./backend/workers/quality_worker
+    image: audio-analysis-quality-worker:latest
+    container_name: quality-worker
+    restart: unless-stopped
+    ports:
+      - "8004:8004"
+    volumes:
+      - ./data:/app/data/shared_audio
+    environment:
+      - PYTHONUNBUFFERED=1
+      - OMP_NUM_THREADS=4
+      - OPENBLAS_NUM_THREADS=4
+    networks:
+      - backend-net
 
   bpm-worker:
     build: ./backend/workers/bpm_worker

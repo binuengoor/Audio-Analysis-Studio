@@ -135,20 +135,40 @@ export const Library: React.FC = () => {
                   {/* Analysis Result */}
                   <td className="px-5 py-4 whitespace-nowrap">
                     {entry.analysis ? (
-                      <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-200 font-bold text-xs border border-blue-500/30">
-                          {entry.analysis.key_camelot}
-                        </span>
-                        <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-200 font-bold text-xs border border-purple-500/30">
-                          {entry.analysis.bpm} BPM
-                        </span>
-                        <span className="text-xs text-slate-400">
-                          {entry.analysis.key_standard}
-                        </span>
-                        {entry.analysis.chords && entry.analysis.chords.length > 0 && (
-                          <span className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded border border-slate-700">
-                            {entry.analysis.chords.length} chords
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-200 font-bold text-xs border border-blue-500/30">
+                            {entry.analysis.key_camelot}
                           </span>
+                          <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-200 font-bold text-xs border border-purple-500/30">
+                            {entry.analysis.bpm} BPM
+                          </span>
+                          <span className="text-xs text-slate-400">
+                            {entry.analysis.key_standard}
+                          </span>
+                          {entry.analysis.chords && entry.analysis.chords.length > 0 && (
+                            <span className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded border border-slate-700">
+                              {entry.analysis.chords.length} chords
+                            </span>
+                          )}
+                        </div>
+
+                        {entry.analysis.quality && (
+                          <div className="flex items-center gap-2 text-[10px]">
+                            <span className="text-emerald-400/90 font-medium bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                              {entry.analysis.quality.container.codec} {entry.analysis.quality.container.bit_depth}-bit
+                            </span>
+                            <span className="text-purple-300 font-medium bg-purple-950/40 px-1.5 py-0.5 rounded border border-purple-500/20">
+                              {entry.analysis.quality.mastering.lufs.toFixed(1)} LUFS
+                            </span>
+                            <span className={`font-semibold px-1.5 py-0.5 rounded border ${
+                              entry.analysis.quality.authenticity.verdict === 'SUSPICIOUS'
+                                ? 'bg-rose-950/40 text-rose-300 border-rose-500/30'
+                                : 'bg-slate-800 text-slate-300 border-slate-700'
+                            }`}>
+                              {entry.analysis.quality.authenticity.verdict}
+                            </span>
+                          </div>
                         )}
                       </div>
                     ) : (

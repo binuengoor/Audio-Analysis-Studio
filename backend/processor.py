@@ -8,6 +8,7 @@ from models import AnalysisResult, ChordSegment
 BPM_WORKER_URL = os.getenv("BPM_WORKER_URL", "http://bpm-worker:8001/analyze")
 KEY_WORKER_URL = os.getenv("KEY_WORKER_URL", "http://key-worker:8002/analyze")
 CHORD_WORKER_URL = os.getenv("CHORD_WORKER_URL", "http://chord-worker:8003/analyze")
+QUALITY_WORKER_URL = os.getenv("QUALITY_WORKER_URL", "http://quality-worker:8004/analyze")
 
 class BatchProcessor:
     def __init__(self, upload_dir: str):
@@ -33,7 +34,7 @@ class BatchProcessor:
 
     async def analyze_file_microservices(self, file_path: str, filename: str = "") -> dict:
         """
-        Coordinates asynchronous analysis across BPM, Key, and Chord workers using asyncio.gather.
+        Coordinates asynchronous analysis across BPM, Key, Chord, and Quality workers using asyncio.gather.
         Embeds metadata into the audio file and returns aggregated results.
         """
         if not os.path.exists(file_path):
@@ -44,9 +45,10 @@ class BatchProcessor:
             bpm_task = self._call_worker(client, BPM_WORKER_URL, file_path)
             key_task = self._call_worker(client, KEY_WORKER_URL, file_path)
             chord_task = self._call_worker(client, CHORD_WORKER_URL, file_path)
+            quality_task = self._call_worker(client, QUALITY_WORKER_URL, file_path)
 
-            bpm_res, key_res, chord_res = await asyncio.gather(
-                bpm_task, key_task, chord_task
+            bpm_res, key_res, chord_res, quality_res = await asyncio.gather(
+                bpm_task, key_task, chord_task, quality_task
             )
 
         # 1. Parse BPM Worker Response
@@ -70,13 +72,18 @@ class BatchProcessor:
                         "chord": str(c.get("chord", "N"))
                     })
 
-        # 4. Get Duration
+        # 4. Parse Quality Worker Response
+        quality = None
+        if quality_res and "container" in quality_res:
+            quality = quality_res
+
+        # 5. Get Duration
         duration = get_audio_duration(file_path)
 
-        # 5. ID3 & Audio Metadata Writing via mutagen
+        # 6. ID3 & Audio Metadata Writing via mutagen
         write_audio_metadata(file_path, bpm, key_camelot, key_standard)
 
-        # 6. Aggregate Response
+        # 7. Aggregate Response
         clean_filename = filename or os.path.basename(file_path)
         result = {
             "filename": clean_filename,
@@ -86,7 +93,8 @@ class BatchProcessor:
             "key_camelot": key_camelot,
             "key_confidence": key_confidence,
             "duration": duration,
-            "chords": chords
+            "chords": chords,
+            "quality": quality
         }
         return result
 

@@ -16,6 +16,7 @@ sys.path.insert(0, backend_dir)
 sys.path.insert(0, os.path.join(backend_dir, "workers", "bpm_worker"))
 sys.path.insert(0, os.path.join(backend_dir, "workers", "key_worker"))
 sys.path.insert(0, os.path.join(backend_dir, "workers", "chord_worker"))
+sys.path.insert(0, os.path.join(backend_dir, "workers", "quality_worker"))
 
 from metadata import write_audio_metadata, get_audio_duration
 from processor import BatchProcessor
@@ -24,6 +25,7 @@ from models import AnalysisResult
 import bpm_api
 import key_api
 import chord_api
+import quality_api
 
 @pytest.fixture(scope="session")
 def synthetic_audio_file(tmp_path_factory):
@@ -130,6 +132,24 @@ def test_chord_worker_isolation(synthetic_audio_file):
         assert len(data["chords"]) > 0
         assert data["chords"][0]["chord"] == "A:min"
 
+def test_quality_worker_isolation(synthetic_audio_file):
+    """
+    Acceptance Criteria 2d: Quality Worker returns container info, mastering LUFS, authenticity, and spectrogram.
+    """
+    client = TestClient(quality_api.app)
+    response = client.post("/analyze", json={"file_path": synthetic_audio_file})
+    assert response.status_code == 200
+    data = response.json()
+    assert "container" in data
+    assert data["container"]["codec"] == "WAV"
+    assert data["container"]["sample_rate_hz"] == 44100
+    assert "mastering" in data
+    assert "lufs" in data["mastering"]
+    assert "authenticity" in data
+    assert "cutoff_hz" in data["authenticity"]
+    assert "spectrogram_image_path" in data
+    assert os.path.exists(data["spectrogram_image_path"])
+
 def test_metadata_injection(synthetic_audio_file, tmp_path):
     """
     Acceptance Criteria 3: Metadata Injection Test
@@ -157,7 +177,7 @@ def test_metadata_injection(synthetic_audio_file, tmp_path):
 async def test_concurrency_parallel_execution(tmp_path, synthetic_audio_file):
     """
     Acceptance Criteria 4: Concurrency Test
-    Verify that asyncio.gather successfully resolves all three worker requests in parallel, rather than sequentially.
+    Verify that asyncio.gather successfully resolves all four worker requests in parallel, rather than sequentially.
     """
     processor = BatchProcessor(str(tmp_path))
 
@@ -170,6 +190,13 @@ async def test_concurrency_parallel_execution(tmp_path, synthetic_audio_file):
             return {"key_camelot": "8A", "key_standard": "A minor", "key_confidence": 0.95}
         elif "8003" in url:
             return {"chords": [{"start": 0.0, "end": 10.0, "chord": "A:min"}]}
+        elif "8004" in url:
+            return {
+                "container": {"codec": "WAV", "stated_bitrate_kbps": 1411, "sample_rate_hz": 44100, "bit_depth": 16, "channels": 2},
+                "mastering": {"lufs": -14.0, "peak_db": -0.5},
+                "authenticity": {"cutoff_hz": 20500, "estimated_bitrate_kbps": "Lossless", "verdict": "GENUINE"},
+                "spectrogram_image_path": "/app/data/shared_audio/test_spectrogram.png"
+            }
         return {}
 
     with patch.object(processor, "_call_worker", side_effect=mock_worker_call):
@@ -177,11 +204,13 @@ async def test_concurrency_parallel_execution(tmp_path, synthetic_audio_file):
         result = await processor.analyze_file_microservices(synthetic_audio_file)
         elapsed = time.perf_counter() - start_time
 
-        # If executed sequentially: 0.2 * 3 = 0.6s.
-        # If executed in parallel with asyncio.gather: ~0.2s - 0.35s.
-        assert elapsed < 0.5, f"Expected parallel execution in < 0.5s, took {elapsed:.2f}s"
+        # If executed sequentially: 0.2 * 4 = 0.8s.
+        # If executed in parallel with asyncio.gather: ~0.2s - 0.4s.
+        assert elapsed < 0.55, f"Expected parallel execution in < 0.55s, took {elapsed:.2f}s"
         assert result["bpm"] == 120.0
         assert result["key_camelot"] == "8A"
         assert result["key_standard"] == "A minor"
         assert len(result["chords"]) == 1
         assert result["chords"][0]["chord"] == "A:min"
+        assert result["quality"] is not None
+        assert result["quality"]["container"]["codec"] == "WAV"

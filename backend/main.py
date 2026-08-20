@@ -86,9 +86,12 @@ async def analyze_audio(request: AnalyzeRequest):
 
     try:
         entry = library.get_entry_by_filename(filename)
+        if not entry:
+            entry = library.add_entry(filename)
+
         result = await processor.process_file(filename)
         
-        # Update library if entry exists
+        # Update library
         if entry:
             library.update_analysis(entry.id, AnalysisResult(**result))
             

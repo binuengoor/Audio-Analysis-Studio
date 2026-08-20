@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+flac-detective
+pyloudnorm
+soundfile
+librosa
+matplotlib
+mutagen
+pydantic
+numpy
+scipy

@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { UploadZone } from './components/UploadZone';
 import { WaveformPlayer, WaveformPlayerHandle } from './components/WaveformPlayer';
 import { ChordProgression } from './components/ChordProgression';
+import { QualityAnalysis } from './components/QualityAnalysis';
 import { Library } from './components/Library';
 import { useAudioStore } from './store/useAudioStore';
 
@@ -212,6 +213,11 @@ function App() {
                     onSeek={handleSeek}
                     currentTime={currentPlaybackTime}
                   />
+                )}
+
+                {/* Audio Quality & Mastering Specs */}
+                {activeAnalysis && activeAnalysis.quality && (
+                  <QualityAnalysis quality={activeAnalysis.quality} />
                 )}
 
                 {/* File Renaming & ID3 Embedding Bar */}
