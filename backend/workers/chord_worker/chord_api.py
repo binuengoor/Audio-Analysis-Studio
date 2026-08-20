@@ -10,9 +10,10 @@ chord_proc = None
 def get_processors():
     global feat_proc, chord_proc
     if feat_proc is None or chord_proc is None:
-        from madmom.features.chords import CNNChordFeatureProcessor, CRFChordRecognitionProcessor
-        feat_proc = CNNChordFeatureProcessor()
-        chord_proc = CRFChordRecognitionProcessor()
+        from madmom.audio.chroma import DeepChromaProcessor
+        from madmom.features.chords import DeepChromaChordRecognitionProcessor
+        feat_proc = DeepChromaProcessor()
+        chord_proc = DeepChromaChordRecognitionProcessor()
     return feat_proc, chord_proc
 
 @asynccontextmanager
