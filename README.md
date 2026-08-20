@@ -1,156 +1,153 @@
-# Audio Analysis – Key & BPM
+# Audio Analysis Studio – Key, BPM & Chord Progression
 
 ![Publish Docker images](https://github.com/binuengoor/Audio-Analysis-Key-BPM/actions/workflows/docker-publish.yml/badge.svg)
 
-Single-track BPM/key analyser with a dark-themed React UI on top of a FastAPI/Essentia backend. Drop in a file, inspect confidence metrics, rename it with tokenised patterns, and curate a local library that stores both the original input and processed output.
+A high-performance audio analysis dashboard powered by an asynchronous **multi-engine microservices architecture** and a modern React dark-themed UI. Drop in any audio track, inspect BPM, Camelot Key, Standard Key, and interactive chord progression timelines, automatically embed ID3 metadata tags, and curate your audio library.
 
-## Highlights
+![Audio Analysis Studio Dashboard](docs/images/dashboard_full.png)
 
-- **Accurate analysis** – Essentia-backed extraction of BPM, Camelot key, standard key, and confidence scores with silence trimming.
-- **Waveform verification** – Interactive WaveSurfer preview embedded in both the analyzer and library views.
-- **Smart library** – Persisted JSON database tracks the 1:1 relationship between uploaded input files and processed outputs with delete/clear controls.
-- **Token-based renaming** – Compose filenames with `{Camelot}`, `{Key}`, `{BPM}`, and `{OriginalName}` before saving to the output folder.
-- **Docker-first** – Backend and frontend have dedicated Dockerfiles and a compose stack for local dev or deployment.
-- **CI/CD ready** – GitHub Actions builds and publishes backend/frontend images to the GitHub Container Registry (GHCR) on every push to `main`.
+---
 
-## Architecture
+## Highlights & Features
+
+- **Multi-Engine Microservices Architecture:**
+  - **Tempo & BPM Detection:** [BeatNet](https://github.com/mjhydri/BeatNet) state-of-the-art DBN (Dynamic Bayesian Network) beat and downbeat tracking engine.
+  - **Key & Camelot Detection:** [MusicalKeyCNN](https://github.com/danielfriis/musical-key-cnn) deep neural network predicting both Camelot wheel notations (`12A`, `8B`, etc.) and Standard Key (`C# minor`, `F major`, etc.).
+  - **Chord Progression Recognition:** [Madmom](https://github.com/CPJKU/madmom) CNN + CRF (Conditional Random Field) chord segmentation and harmonic progression modeling.
+  - **API Gateway:** Lightweight, high-throughput FastAPI gateway orchestrating analysis workers in parallel using `asyncio.gather()`.
+
+- **Interactive Chord Progression Viewer:**
+  - **Timeline View:** Horizontally scrollable timeline displaying timestamped chord blocks (`[0.0s - 1.3s] F#m`) with harmonic duration badges.
+  - **Harmonic Flow View:** Summarized harmonic journey (e.g. `F#m → G# → C#m → C#`).
+  - **Click-to-Seek Audio Sync:** Clicking any chord block jumps playback directly to that moment.
+  - **Live Playback Tracking:** The active chord lights up in real time during waveform audio preview.
+
+- **Automated ID3 Metadata Tagging:**
+  - Embedded `TBPM` (BPM tempo) and `TKEY` (Camelot Key / Standard Key) tags are automatically written directly into the file headers using `mutagen` on analysis and export.
+
+- **Unified Single-Page Dashboard:**
+  - Ingestion drop-zone, real-time batch queueing, active track analysis, and library management consolidated onto a single page.
+  - Clicking any track in the library instantly loads its analysis, waveform preview, and chord progression front-and-center without triggering unnecessary re-analysis.
+  - Dedicated **"Re-analyze"** button to force re-processing on demand.
+
+- **Flexible Token-Based Renaming:**
+  - Default naming convention: `{OriginalName} - {Key} - {BPM}`.
+  - Presets for `{Camelot} - {BPM} - {OriginalName}` and `{BPM} - {Camelot} - {OriginalName}`.
+  - Preserves musical notation symbols (`#`, etc.) in generated filenames.
+
+- **Apple Silicon & Multi-Architecture Native Support:**
+  - Fully optimized for ARM64 (Apple Silicon M1/M2/M3/M4) and AMD64 with OpenBLAS hardware acceleration and multi-threaded linear algebra.
+
+---
+
+## Architecture Overview
 
 ```
-frontend/  – React + Vite + Tailwind + Zustand state
-backend/   – FastAPI service orchestrating Essentia analyzers
-data/      – Runtime storage (input, output, library.json)
-docker-compose.yml – Local two-service stack
+                          ┌──────────────────────────┐
+                          │   Frontend (React/Vite)  │
+                          │   http://localhost:3000   │
+                          └─────────────┬────────────┘
+                                        │ HTTP
+                                        ▼
+                          ┌──────────────────────────┐
+                          │   API Gateway (FastAPI)  │
+                          │   http://localhost:8000   │
+                          └──────┬──────┬──────┬─────┘
+                                 │      │      │  (asyncio.gather)
+             ┌───────────────────┘      │      └───────────────────┐
+             ▼                          ▼                          ▼
+ ┌───────────────────────┐  ┌───────────────────────┐  ┌───────────────────────┐
+ │       BPM Worker      │  │       Key Worker      │  │      Chord Worker     │
+ │       (BeatNet)       │  │    (MusicalKeyCNN)    │  │        (Madmom)       │
+ │      Port: 8001       │  │       Port: 8002      │  │       Port: 8003      │
+ └───────────────────────┘  └───────────────────────┘  └───────────────────────┘
+             │                          │                          │
+             └──────────────────────────┴──────────────────────────┘
+                                        │
+                                        ▼
+                          ┌──────────────────────────┐
+                          │    Shared Audio Volume   │
+                          │  /app/data/shared_audio  │
+                          └──────────────────────────┘
 ```
 
-- **Backend** mounts `./data` into the container so uploads, processed files, and `library.json` stay on the host.
-- **Frontend** is a static Vite bundle served by NGINX in production.
-- API + static mounts are exposed on `http://localhost:8000`, UI on `http://localhost:3000` when using Compose.
+---
 
-## Prerequisites
+## Quick Start with Docker Compose
 
-- Node.js 18+
-- Python 3.10+ (for direct backend work)
-- Docker & Docker Compose (for the easiest full-stack run)
+### 1. Clone the Repository
+```bash
+git clone https://github.com/binuengoor/Audio-Analysis-Key-BPM.git
+cd Audio-Analysis-Key-BPM
+```
 
-## Running with Docker Compose
-
-### Use pre-built GHCR images (default)
-
-```fish
-cd /Users/millionmax/Documents/Git/audio-analysis-key-bpm
-docker login ghcr.io -u <github-username> -p <ghcr-token>
-docker compose pull
+### 2. Start the Stack
+```bash
 docker compose up -d
 ```
 
-- Frontend → http://localhost:3000
-- Backend API → http://localhost:8000
-- The frontend's NGINX proxy forwards `/api/*` and `/files/*` to the backend container, so only the frontend port needs to be exposed externally.
-- **Running on ARM hosts** (Oracle Ampere, Raspberry Pi, Apple Silicon without Docker Desktop): install QEMU binfmt emulation once so the amd64 images can run:
+* **Frontend UI:** [http://localhost:3000](http://localhost:3000)
+* **API Gateway:** [http://localhost:8000](http://localhost:8000)
+* **BPM Worker:** [http://localhost:8001](http://localhost:8001)
+* **Key Worker:** [http://localhost:8002](http://localhost:8002)
+* **Chord Worker:** [http://localhost:8003](http://localhost:8003)
 
+To stop all services:
 ```bash
-sudo apt update && sudo apt install -y qemu-user-static
-docker run --privileged --rm tonistiigi/binfmt --install amd64
+docker compose down
 ```
 
-The compose files already pin `platform: linux/amd64`, so once binfmt is installed `docker compose up -d` works the same way on ARM.
+---
 
-### Build the images locally
+## Renaming Token Reference
 
-If you want to hack on the Dockerfiles, use the alternate compose file that restores the local build contexts and backend code mount:
+| Token | Inserts | Example |
+| :--- | :--- | :--- |
+| `{OriginalName}` | Original uploaded filename (without extension) | `My Song` |
+| `{Key}` | Standard musical key | `C# minor` / `F major` |
+| `{Camelot}` | Camelot wheel key | `12A` / `7B` |
+| `{BPM}` | Tempo in beats per minute | `125.0` |
 
-```fish
-docker compose -f docker-compose.build.yml up --build
-```
+---
 
-Stop either stack with `docker compose [-f docker-compose.build.yml] down`.
-
-## Local development workflows
-
-### Backend
-
-```fish
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn main:app --reload
-```
-
-### Frontend
-
-```fish
-cd frontend
-npm install
-npm run dev
-```
-
-Set `VITE_API_URL` if you need to point at a non-default API.
-
-## Data folder contract
-
-```
-data/
-├── input/   # transient uploads (ignored by git, empty placeholder committed)
-├── output/  # processed assets (ignored by git)
-└── library.json  # persistent metadata/linking between input/output
-```
-
-Only `library.json` is versioned. Input/output folders stay empty in git via `.gitkeep` placeholders.
-
-## Rename token reference
-
-| Token | Inserts |
-| --- | --- |
-| `{Camelot}` | Camelot wheel value (e.g., `8B`) |
-| `{Key}` | Standard key (e.g., `C Major`) |
-| `{BPM}` | Rounded BPM |
-| `{OriginalName}` | Uploaded filename (without extension) |
-
-Combine tokens like `{Camelot} - {BPM} - {OriginalName}` inside the “Save to Library” field.
-
-## API surface (selected)
+## API Reference
 
 | Method | Endpoint | Description |
-| --- | --- | --- |
-| `GET` | `/` | Health check |
-| `POST` | `/api/upload` | Store the next audio file (auto-clears previous input) |
-| `POST` | `/api/analyze` | Run Essentia analysis for the uploaded filename |
-| `POST` | `/api/process` | Copy input → output with rename tokens applied |
-| `GET` | `/api/library` | List library entries |
-| `DELETE` | `/api/library/{id}/input` | Remove only the source file |
-| `DELETE` | `/api/library/{id}/output` | Remove only the processed file |
-| `DELETE` | `/api/library` | Clear the entire library (inputs, outputs, metadata) |
+| :--- | :--- | :--- |
+| `GET` | `/` | Gateway health check |
+| `POST` | `/api/upload` | Upload audio file to shared ingestion storage |
+| `POST` | `/api/analyze` | Run parallel multi-engine analysis on audio track |
+| `POST` | `/api/reanalyze` | Force re-analysis of an existing library audio file |
+| `POST` | `/api/queue` | Add a batch list of audio filenames to processing queue |
+| `GET` | `/api/status` | Get real-time batch processing progress |
+| `POST` | `/api/process` | Copy input → output with tokenized rename and embed ID3 tags |
+| `GET` | `/api/library` | Retrieve all library entries and analysis metadata |
+| `GET` | `/api/download/input/{filename}` | Download original uploaded audio file |
+| `GET` | `/api/download/output/{filename}` | Download processed audio file with embedded ID3 tags |
+| `DELETE` | `/api/library/{id}/input` | Delete only the original input file |
+| `DELETE` | `/api/library/{id}/output` | Delete only the processed output file |
+| `DELETE` | `/api/library/{id}` | Delete complete library entry and associated files |
+| `DELETE` | `/api/library` | Clear all library files and database |
 
-Static audio files are served at `/files/input/*` and `/files/output/*`.
+---
 
-## Testing & quality gates
+## Running Automated Tests
 
-- **Backend** – `cd backend && pytest`
-- **Frontend** – `cd frontend && npm run build` (type-checks + bundles)
-- **Docker** – `docker compose up --build` ensures both Dockerfiles remain healthy.
-
-## Publishing Docker images to GHCR
-
-Two images are published on every push to `main` via `.github/workflows/docker-publish.yml`:
-
-- `ghcr.io/binuengoor/audio-analysis-key-bpm-backend`
-- `ghcr.io/binuengoor/audio-analysis-key-bpm-frontend`
-
-Pull the latest tags locally:
-
-```fish
-docker pull ghcr.io/binuengoor/audio-analysis-key-bpm-backend:latest
-docker pull ghcr.io/binuengoor/audio-analysis-key-bpm-frontend:latest
+```bash
+pytest backend/tests/
 ```
 
-Tags include both `latest` and the commit SHA for reproducibility. Authentication uses the default `GITHUB_TOKEN`; no extra secrets are required.
+---
 
 ## Contributing
 
-1. Fork and branch off `main`.
-2. Run `npm run build` and `pytest` before submitting PRs.
-3. Keep `README.md`, `TODO.md`, and `specs/` updated when adding features, and avoid checking actual audio assets into version control.
+1. Fork the repository and create your branch from `main`.
+2. Ensure automated tests pass (`pytest backend/tests/`).
+3. Ensure frontend builds cleanly (`npm --prefix frontend run build`).
+4. Submit a Pull Request.
+
+---
 
 ## License
 
-Refer to the upstream repository for licensing details.
+This project is licensed under the MIT License.
