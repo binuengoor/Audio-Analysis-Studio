@@ -11,6 +11,8 @@ services:
   gateway:
     build: ./backend
     image: audio-analysis-gateway:latest
+    # To use prebuilt GitHub Container Registry image instead of local build, uncomment:
+    # image: ghcr.io/binuengoor/audio-analysis-studio-gateway:latest
     container_name: gateway
     restart: unless-stopped
     ports:
@@ -36,6 +38,8 @@ services:
   celery-worker:
     build: ./backend
     image: audio-analysis-gateway:latest
+    # To use prebuilt GitHub Container Registry image instead of local build, uncomment:
+    # image: ghcr.io/binuengoor/audio-analysis-studio-gateway:latest
     container_name: celery-worker
     restart: unless-stopped
     command: celery -A celery_tasks worker --loglevel=info --concurrency=4
@@ -59,6 +63,8 @@ services:
   structure-worker:
     build: ./backend/workers/structure_worker
     image: audio-analysis-structure-worker:latest
+    # To use prebuilt GitHub Container Registry image instead of local build, uncomment:
+    # image: ghcr.io/binuengoor/audio-analysis-studio-structure-worker:latest
     container_name: structure-worker
     restart: unless-stopped
     ports:
@@ -75,6 +81,8 @@ services:
   quality-worker:
     build: ./backend/workers/quality_worker
     image: audio-analysis-quality-worker:latest
+    # To use prebuilt GitHub Container Registry image instead of local build, uncomment:
+    # image: ghcr.io/binuengoor/audio-analysis-studio-quality-worker:latest
     container_name: quality-worker
     restart: unless-stopped
     ports:
@@ -91,6 +99,8 @@ services:
   bpm-worker:
     build: ./backend/workers/bpm_worker
     image: audio-analysis-bpm-worker:latest
+    # To use prebuilt GitHub Container Registry image instead of local build, uncomment:
+    # image: ghcr.io/binuengoor/audio-analysis-studio-bpm-worker:latest
     container_name: bpm-worker
     restart: unless-stopped
     ports:
@@ -107,6 +117,8 @@ services:
   key-worker:
     build: ./backend/workers/key_worker
     image: audio-analysis-key-worker:latest
+    # To use prebuilt GitHub Container Registry image instead of local build, uncomment:
+    # image: ghcr.io/binuengoor/audio-analysis-studio-key-worker:latest
     container_name: key-worker
     restart: unless-stopped
     ports:
@@ -124,6 +136,8 @@ services:
   chord-worker:
     build: ./backend/workers/chord_worker
     image: audio-analysis-chord-worker:latest
+    # To use prebuilt GitHub Container Registry image instead of local build, uncomment:
+    # image: ghcr.io/binuengoor/audio-analysis-studio-chord-worker:latest
     container_name: chord-worker
     restart: unless-stopped
     ports:
@@ -140,6 +154,8 @@ services:
   audio-analysis-frontend:
     build: ./frontend
     image: audio-analysis-frontend:latest
+    # To use prebuilt GitHub Container Registry image instead of local build, uncomment:
+    # image: ghcr.io/binuengoor/audio-analysis-studio-frontend:latest
     container_name: audio-analysis-frontend
     restart: unless-stopped
     ports:

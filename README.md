@@ -136,6 +136,23 @@ To stop all services:
 docker compose down
 ```
 
+### 3. Prebuilt Container Images (GitHub Container Registry)
+
+All images are continuously built and published to `ghcr.io`:
+* `ghcr.io/binuengoor/audio-analysis-studio-gateway:latest`
+* `ghcr.io/binuengoor/audio-analysis-studio-frontend:latest`
+* `ghcr.io/binuengoor/audio-analysis-studio-bpm-worker:latest`
+* `ghcr.io/binuengoor/audio-analysis-studio-key-worker:latest`
+* `ghcr.io/binuengoor/audio-analysis-studio-chord-worker:latest`
+* `ghcr.io/binuengoor/audio-analysis-studio-structure-worker:latest`
+* `ghcr.io/binuengoor/audio-analysis-studio-quality-worker:latest`
+
+To run prebuilt images without local compiling, uncomment the `image: ghcr.io/...` lines in `docker-compose.yml` and run:
+```bash
+docker compose pull
+docker compose up -d
+```
+
 ---
 
 ## Renaming Token Reference
