@@ -82,17 +82,16 @@ export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerPro
       setTotalDuration(dur);
     });
 
-    // Handle region click for fast section jump
-    wsRegions.on('region-clicked', (region: any, e: MouseEvent) => {
-      e.stopPropagation();
-      ws.setTime(region.start);
-    });
-
     ws.on('timeupdate', (time) => {
       setCurrentTime(time);
       if (onTimeUpdate) {
         onTimeUpdate(time);
       }
+    });
+
+    // Auto-play when user clicks on waveform to seek
+    ws.on('click', () => {
+      ws.play();
     });
 
     ws.on('play', () => setIsPlaying(true));
@@ -127,15 +126,15 @@ export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerPro
           resize: false,
         });
 
-        // Add custom clean style to region DOM element
+        // Set pointer-events: none on region overlay so clicks pass directly to waveform for exact timestamp seeking
         if (region.element) {
-          region.element.style.borderRadius = '6px';
+          region.element.style.pointerEvents = 'none';
+          region.element.style.borderRadius = '4px';
           region.element.style.border = '1px solid rgba(255, 255, 255, 0.12)';
           region.element.style.fontSize = '11px';
           region.element.style.fontWeight = '700';
           region.element.style.color = '#f1f5f9';
           region.element.style.padding = '4px 8px';
-          region.element.style.cursor = 'pointer';
         }
       });
     } else if (startTime !== undefined && endTime !== undefined) {
@@ -158,6 +157,7 @@ export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerPro
   const handleSectionClick = (start: number) => {
     if (wavesurfer.current && isReady) {
       wavesurfer.current.setTime(start);
+      wavesurfer.current.play();
     }
   };
 
