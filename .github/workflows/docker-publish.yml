@@ -29,7 +29,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push gateway / backend image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./backend
           file: ./backend/Dockerfile
@@ -40,7 +40,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/audio-analysis-studio-gateway:${{ github.sha }}
 
       - name: Build and push frontend image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./frontend
           file: ./frontend/Dockerfile
@@ -51,7 +51,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/audio-analysis-studio-frontend:${{ github.sha }}
 
       - name: Build and push BPM worker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./backend/workers/bpm_worker
           file: ./backend/workers/bpm_worker/Dockerfile
@@ -62,7 +62,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/audio-analysis-studio-bpm-worker:${{ github.sha }}
 
       - name: Build and push Key worker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./backend/workers/key_worker
           file: ./backend/workers/key_worker/Dockerfile
@@ -73,7 +73,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/audio-analysis-studio-key-worker:${{ github.sha }}
 
       - name: Build and push Chord worker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./backend/workers/chord_worker
           file: ./backend/workers/chord_worker/Dockerfile
@@ -84,7 +84,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/audio-analysis-studio-chord-worker:${{ github.sha }}
 
       - name: Build and push Structure worker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./backend/workers/structure_worker
           file: ./backend/workers/structure_worker/Dockerfile
@@ -95,7 +95,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/audio-analysis-studio-structure-worker:${{ github.sha }}
 
       - name: Build and push Quality worker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./backend/workers/quality_worker
           file: ./backend/workers/quality_worker/Dockerfile
