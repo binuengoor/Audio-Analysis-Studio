@@ -2,7 +2,7 @@ fastapi
 uvicorn
 pydantic
 librosa
-numpy<2.0
+numpy<3.0
 scipy
 pandas
 mutagen
