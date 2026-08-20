@@ -1,18 +1,31 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+import os
+import shutil
+import asyncio
+from typing import List, Optional
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-import shutil
-import os
-from typing import List
-from models import AnalyzeRequest, AnalysisResult, QueueRequest, QueueStatus, RenameRequest, LibraryEntry
+from celery.result import AsyncResult
+
+from models import (
+    AnalysisResult,
+    AnalyzeRequest,
+    BatchAnalyzeRequest,
+    BatchAnalyzeResponse,
+    JobStatusResponse,
+    QueueRequest,
+    QueueStatus,
+    RenameRequest,
+    LibraryEntry,
+)
 from processor import BatchProcessor
+from metadata import generate_new_filename
 from library import LibraryManager
-from metadata import write_audio_metadata
+from celery_tasks import celery_app, analyze_audio_task
 
-app = FastAPI(title="Audio Analysis Gateway")
+app = FastAPI(title="Audio Analysis Studio API Gateway")
 
-# Configure CORS
+# Setup CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,42 +34,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Directory Setup with support for shared docker volume /app/data/shared_audio
-if os.path.exists("/app/data/shared_audio"):
-    DATA_DIR = "/app/data/shared_audio"
-elif os.path.exists("/data"):
-    DATA_DIR = "/data"
-else:
-    workspace_data = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
-    DATA_DIR = workspace_data if os.path.exists(workspace_data) else "music_in"
-
-INPUT_DIR = os.path.join(DATA_DIR, "input")
-OUTPUT_DIR = os.path.join(DATA_DIR, "output")
+# Directories (Shared Volume)
+DEFAULT_DATA_DIR = "/app/data/shared_audio" if os.path.exists("/app") else os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
+SHARED_DATA_DIR = os.getenv("SHARED_DATA_DIR", DEFAULT_DATA_DIR)
+DATA_DIR = SHARED_DATA_DIR
+INPUT_DIR = os.path.join(SHARED_DATA_DIR, "input")
+OUTPUT_DIR = os.path.join(SHARED_DATA_DIR, "output")
 
 os.makedirs(INPUT_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Initialize Services
-library = LibraryManager(DATA_DIR)
-processor = BatchProcessor(INPUT_DIR)
-
-# Mount directories for static access
+# Mount static files for audio preview streaming and spectrogram viewing
 app.mount("/files/input", StaticFiles(directory=INPUT_DIR), name="input_files")
 app.mount("/files/output", StaticFiles(directory=OUTPUT_DIR), name="output_files")
 
+processor = BatchProcessor(INPUT_DIR)
+library = LibraryManager(SHARED_DATA_DIR)
+
 @app.get("/")
 def read_root():
-    return {"message": "Audio Analysis Backend is running"}
-
-@app.get("/api/library", response_model=List[LibraryEntry])
-def get_library():
-    return library.get_all()
+    return {"message": "Audio Analysis Studio Gateway Live"}
 
 @app.post("/api/upload", response_model=LibraryEntry)
-async def upload_file(file: UploadFile = File(...)):
-    file_path = os.path.join(INPUT_DIR, file.filename)
-    print(f"Saving uploaded file to {file_path}")
+async def upload_audio(file: UploadFile = File(...)):
     try:
+        file_path = os.path.join(INPUT_DIR, file.filename)
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
@@ -101,6 +103,45 @@ async def analyze_audio(request: AnalyzeRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/analyze/batch", response_model=BatchAnalyzeResponse)
+async def analyze_batch(request: BatchAnalyzeRequest):
+    """
+    Enqueues asynchronous analysis tasks for multiple files to the Celery/Redis job queue.
+    Returns a list of job_ids.
+    """
+    job_ids = []
+    for filename in request.filenames:
+        entry = library.get_entry_by_filename(filename)
+        if not entry:
+            entry = library.add_entry(filename)
+        if entry:
+            entry.status = "processing"
+            library.save()
+
+        task = analyze_audio_task.delay(filename)
+        job_ids.append(task.id)
+
+    return BatchAnalyzeResponse(job_ids=job_ids)
+
+@app.get("/api/jobs/{job_id}", response_model=JobStatusResponse)
+async def get_job_status(job_id: str):
+    """
+    Polls the status of a Celery background job and retrieves the merged analysis JSON once complete.
+    """
+    res = AsyncResult(job_id, app=celery_app)
+    state = res.state
+
+    if state == "SUCCESS":
+        raw_result = res.result
+        analysis = AnalysisResult(**raw_result) if isinstance(raw_result, dict) else raw_result
+        return JobStatusResponse(job_id=job_id, status="SUCCESS", result=analysis)
+    elif state == "FAILURE":
+        return JobStatusResponse(job_id=job_id, status="FAILURE", error=str(res.result))
+    elif state in ("STARTED", "PROCESSING"):
+        return JobStatusResponse(job_id=job_id, status="PROCESSING")
+    else:
+        return JobStatusResponse(job_id=job_id, status="PENDING")
+
 @app.post("/api/reanalyze", response_model=AnalysisResult)
 async def reanalyze_audio(request: AnalyzeRequest):
     return await analyze_audio(request)
@@ -128,117 +169,104 @@ async def process_output(request: RenameRequest):
 
     source_path = os.path.join(INPUT_DIR, entry.input_path)
     if not os.path.exists(source_path):
-        raise HTTPException(status_code=404, detail="Source file missing on disk")
+        raise HTTPException(status_code=404, detail="Source file not found on disk")
 
-    name, ext = os.path.splitext(request.filename)
-    new_name = request.pattern.format(
-        OriginalName=name,
-        Key=request.key,
-        BPM=request.bpm,
-        Camelot=request.camelot
+    new_name = generate_new_filename(
+        entry.filename,
+        request.pattern,
+        request.bpm,
+        request.key,
+        request.camelot
     )
-    new_name = "".join(c for c in new_name if c.isalnum() or c in (' ', '-', '_', '.', '#', '+', '(', ')', '[', ']'))
-    new_filename = f"{new_name}{ext}"
-    dest_path = os.path.join(OUTPUT_DIR, new_filename)
+    dest_path = os.path.join(OUTPUT_DIR, new_name)
 
-    counter = 1
-    base_new_filename = new_filename
-    while os.path.exists(dest_path):
-        name_part, ext_part = os.path.splitext(base_new_filename)
-        new_filename = f"{name_part}_{counter}{ext_part}"
-        dest_path = os.path.join(OUTPUT_DIR, new_filename)
-        counter += 1
+    shutil.copy2(source_path, dest_path)
+    library.set_output(entry.id, new_name)
 
-    try:
-        shutil.copy2(source_path, dest_path)
-        # Automatically write ID3 metadata tags into the newly created output file
-        write_audio_metadata(dest_path, request.bpm, request.camelot, request.key)
-        library.set_output(entry.id, new_filename)
-        return {"id": entry.id, "output_filename": new_filename}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return {
+        "message": "File processed and renamed successfully",
+        "output_filename": new_name,
+        "library_entry": entry
+    }
+
+@app.get("/api/library", response_model=List[LibraryEntry])
+def get_library():
+    return library.get_all()
 
 @app.get("/api/download/input/{filename}")
 def download_input(filename: str):
     file_path = os.path.join(INPUT_DIR, filename)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(file_path, filename=filename, media_type="application/octet-stream")
+    from fastapi.responses import FileResponse
+    return FileResponse(file_path, filename=filename)
 
 @app.get("/api/download/output/{filename}")
 def download_output(filename: str):
     file_path = os.path.join(OUTPUT_DIR, filename)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(file_path, filename=filename, media_type="application/octet-stream")
+    from fastapi.responses import FileResponse
+    return FileResponse(file_path, filename=filename)
 
 @app.delete("/api/library/{id}/input")
-def delete_input(id: str):
+def delete_input_file(id: str):
     entry = library.get_entry(id)
-    if not entry:
-        raise HTTPException(status_code=404, detail="Entry not found")
+    if not entry or not entry.input_path:
+        raise HTTPException(status_code=404, detail="Entry or input file not found")
     
-    if entry.input_path:
-        path = os.path.join(INPUT_DIR, entry.input_path)
-        if os.path.exists(path):
-            os.remove(path)
-        library.delete_input(id)
-    return {"status": "deleted"}
+    file_path = os.path.join(INPUT_DIR, entry.input_path)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+    
+    library.delete_input(id)
+    return {"message": "Input file deleted successfully"}
 
 @app.delete("/api/library/{id}/output")
-def delete_output(id: str):
+def delete_output_file(id: str):
     entry = library.get_entry(id)
-    if not entry:
-        raise HTTPException(status_code=404, detail="Entry not found")
+    if not entry or not entry.output_path:
+        raise HTTPException(status_code=404, detail="Entry or output file not found")
     
-    if entry.output_path:
-        path = os.path.join(OUTPUT_DIR, entry.output_path)
-        if os.path.exists(path):
-            os.remove(path)
-        library.delete_output(id)
-    return {"status": "deleted"}
+    file_path = os.path.join(OUTPUT_DIR, entry.output_path)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        
+    library.delete_output(id)
+    return {"message": "Output file deleted successfully"}
 
 @app.delete("/api/library/{id}")
 def delete_entry(id: str):
     entry = library.get_entry(id)
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
+    
     if entry.input_path:
-        path = os.path.join(INPUT_DIR, entry.input_path)
-        if os.path.exists(path):
-            os.remove(path)
+        p = os.path.join(INPUT_DIR, entry.input_path)
+        if os.path.exists(p):
+            os.remove(p)
+            
     if entry.output_path:
-        path = os.path.join(OUTPUT_DIR, entry.output_path)
-        if os.path.exists(path):
-            os.remove(path)
-    library.entries.remove(entry)
-    library.save()
-    return {"status": "deleted"}
+        p = os.path.join(OUTPUT_DIR, entry.output_path)
+        if os.path.exists(p):
+            os.remove(p)
+            
+    library.delete_input(id)
+    library.delete_output(id)
+    return {"message": "Entry and files deleted successfully"}
 
 @app.delete("/api/library")
 def clear_library():
-    if os.path.exists(OUTPUT_DIR):
-        for filename in os.listdir(OUTPUT_DIR):
-            file_path = os.path.join(OUTPUT_DIR, filename)
-            try:
-                if os.path.isfile(file_path) or os.path.islink(file_path):
-                    os.unlink(file_path)
-                elif os.path.isdir(file_path):
-                    shutil.rmtree(file_path)
-            except Exception as e:
-                print(f"Failed to delete {file_path}. Reason: {e}")
-
-    if os.path.exists(INPUT_DIR):
-        for filename in os.listdir(INPUT_DIR):
-            file_path = os.path.join(INPUT_DIR, filename)
-            try:
-                if os.path.isfile(file_path) or os.path.islink(file_path):
-                    os.unlink(file_path)
-                elif os.path.isdir(file_path):
-                    shutil.rmtree(file_path)
-            except Exception as e:
-                print(f"Failed to delete {file_path}. Reason: {e}")
-
+    for f in os.listdir(INPUT_DIR):
+        p = os.path.join(INPUT_DIR, f)
+        if os.path.isfile(p) and not f.startswith("."):
+            os.remove(p)
+            
+    for f in os.listdir(OUTPUT_DIR):
+        p = os.path.join(OUTPUT_DIR, f)
+        if os.path.isfile(p) and not f.startswith("."):
+            os.remove(p)
+            
     library.entries = []
     library.save()
-    return {"status": "cleared"}
+    return {"message": "Library cleared completely"}

@@ -43,7 +43,7 @@ def clean_upload_dir():
 def test_read_root():
     response = client.get("/")
     assert response.status_code == 200
-    assert response.json() == {"message": "Audio Analysis Backend is running"}
+    assert "message" in response.json()
 
 def test_upload_file(clean_upload_dir):
     filename = "test_upload.mp3"
@@ -115,3 +115,42 @@ def test_process_output_file(clean_upload_dir):
     assert response.status_code == 200
     data = response.json()
     assert "output_filename" in data
+
+@patch("celery_tasks.analyze_audio_task.delay")
+def test_celery_batch_and_jobs_api(mock_delay):
+    mock_task = MagicMock()
+    mock_task.id = "test-job-uuid-1234"
+    mock_delay.return_value = mock_task
+
+    # 1. Test POST /api/analyze/batch
+    response = client.post("/api/analyze/batch", json={"filenames": ["test_track.wav"]})
+    assert response.status_code == 200
+    data = response.json()
+    assert "job_ids" in data
+    assert data["job_ids"] == ["test-job-uuid-1234"]
+
+    # 2. Test GET /api/jobs/{job_id} with mock AsyncResult
+    with patch("main.AsyncResult") as mock_async_result:
+        instance = mock_async_result.return_value
+        instance.state = "SUCCESS"
+        instance.result = {
+            "filename": "test_track.wav",
+            "bpm": 125.0,
+            "bpm_confidence": 0.95,
+            "key_standard": "C# minor",
+            "key_camelot": "12A",
+            "key_confidence": 0.95,
+            "duration": 99.68,
+            "chords": [],
+            "quality": None,
+            "segments": [
+                {"start": 0.0, "end": 10.0, "label": "Intro", "color": "rgba(99, 102, 241, 0.20)"}
+            ]
+        }
+
+        job_res = client.get("/api/jobs/test-job-uuid-1234")
+        assert job_res.status_code == 200
+        job_data = job_res.json()
+        assert job_data["job_id"] == "test-job-uuid-1234"
+        assert job_data["status"] == "SUCCESS"
+        assert job_data["result"]["segments"][0]["label"] == "Intro"

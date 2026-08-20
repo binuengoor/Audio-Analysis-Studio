@@ -3,12 +3,13 @@ import os
 from typing import List, Optional, Dict, Any
 import httpx
 from metadata import write_audio_metadata, get_audio_duration
-from models import AnalysisResult, ChordSegment
+from models import AnalysisResult, ChordSegment, SectionSegment
 
 BPM_WORKER_URL = os.getenv("BPM_WORKER_URL", "http://bpm-worker:8001/analyze")
 KEY_WORKER_URL = os.getenv("KEY_WORKER_URL", "http://key-worker:8002/analyze")
 CHORD_WORKER_URL = os.getenv("CHORD_WORKER_URL", "http://chord-worker:8003/analyze")
 QUALITY_WORKER_URL = os.getenv("QUALITY_WORKER_URL", "http://quality-worker:8004/analyze")
+STRUCTURE_WORKER_URL = os.getenv("STRUCTURE_WORKER_URL", "http://structure-worker:8005/analyze")
 
 class BatchProcessor:
     def __init__(self, upload_dir: str):
@@ -34,21 +35,22 @@ class BatchProcessor:
 
     async def analyze_file_microservices(self, file_path: str, filename: str = "") -> dict:
         """
-        Coordinates asynchronous analysis across BPM, Key, Chord, and Quality workers using asyncio.gather.
+        Coordinates asynchronous analysis across BPM, Key, Chord, Quality, and Structure workers using asyncio.gather.
         Embeds metadata into the audio file and returns aggregated results.
         """
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
 
-        # Send simultaneous requests across internal Docker network hostnames
+        # Send simultaneous requests across all 5 workers
         async with httpx.AsyncClient() as client:
             bpm_task = self._call_worker(client, BPM_WORKER_URL, file_path)
             key_task = self._call_worker(client, KEY_WORKER_URL, file_path)
             chord_task = self._call_worker(client, CHORD_WORKER_URL, file_path)
             quality_task = self._call_worker(client, QUALITY_WORKER_URL, file_path)
+            structure_task = self._call_worker(client, STRUCTURE_WORKER_URL, file_path)
 
-            bpm_res, key_res, chord_res, quality_res = await asyncio.gather(
-                bpm_task, key_task, chord_task, quality_task
+            bpm_res, key_res, chord_res, quality_res, structure_res = await asyncio.gather(
+                bpm_task, key_task, chord_task, quality_task, structure_task
             )
 
         # 1. Parse BPM Worker Response
@@ -77,13 +79,26 @@ class BatchProcessor:
         if quality_res and "container" in quality_res:
             quality = quality_res
 
-        # 5. Get Duration
+        # 5. Parse Structure Worker Response (Segments)
+        raw_segments = structure_res.get("segments", []) if isinstance(structure_res, dict) else []
+        segments: List[Dict[str, Any]] = []
+        if isinstance(raw_segments, list):
+            for s in raw_segments:
+                if isinstance(s, dict):
+                    segments.append({
+                        "start": float(s.get("start", 0.0)),
+                        "end": float(s.get("end", 0.0)),
+                        "label": str(s.get("label", "Section")),
+                        "color": str(s.get("color", "rgba(99, 102, 241, 0.20)"))
+                    })
+
+        # 6. Get Duration
         duration = get_audio_duration(file_path)
 
-        # 6. ID3 & Audio Metadata Writing via mutagen
+        # 7. ID3 & Audio Metadata Writing via mutagen
         write_audio_metadata(file_path, bpm, key_camelot, key_standard)
 
-        # 7. Aggregate Response
+        # 8. Aggregate Response
         clean_filename = filename or os.path.basename(file_path)
         result = {
             "filename": clean_filename,
@@ -94,7 +109,8 @@ class BatchProcessor:
             "key_confidence": key_confidence,
             "duration": duration,
             "chords": chords,
-            "quality": quality
+            "quality": quality,
+            "segments": segments
         }
         return result
 
@@ -104,10 +120,8 @@ class BatchProcessor:
         Uses the lock to ensure it doesn't conflict with batch processing.
         """
         async with self.lock:
-            # Check for file either directly in upload_dir or in subdirectories
             file_path = os.path.join(self.upload_dir, filename)
             if not os.path.exists(file_path):
-                # Search recursively in upload_dir
                 found = False
                 for root, _, files in os.walk(self.upload_dir):
                     if filename in files:

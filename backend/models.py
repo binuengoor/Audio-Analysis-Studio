@@ -6,6 +6,12 @@ class ChordSegment(BaseModel):
     end: float
     chord: str
 
+class SectionSegment(BaseModel):
+    start: float
+    end: float
+    label: str
+    color: str
+
 class ContainerInfo(BaseModel):
     codec: str
     stated_bitrate_kbps: int
@@ -38,10 +44,23 @@ class AnalysisResult(BaseModel):
     duration: float = 0.0
     chords: List[ChordSegment] = []
     quality: Optional[QualityResult] = None
+    segments: List[SectionSegment] = []
 
 class AnalyzeRequest(BaseModel):
     filename: Optional[str] = None
     file_path: Optional[str] = None
+
+class BatchAnalyzeRequest(BaseModel):
+    filenames: List[str]
+
+class BatchAnalyzeResponse(BaseModel):
+    job_ids: List[str]
+
+class JobStatusResponse(BaseModel):
+    job_id: str
+    status: str  # PENDING, PROCESSING, SUCCESS, FAILURE
+    result: Optional[AnalysisResult] = None
+    error: Optional[str] = None
 
 class QueueRequest(BaseModel):
     filenames: List[str]

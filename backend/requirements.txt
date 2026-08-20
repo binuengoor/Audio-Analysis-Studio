@@ -8,3 +8,5 @@ numpy
 scipy
 pytest
 pytest-asyncio
+celery[redis]
+redis

@@ -123,6 +123,22 @@ def write_audio_metadata(file_path: str, bpm: float, key_camelot: str, key_stand
 
     except Exception as e:
         print(f"Warning: Failed to write metadata to {file_path}: {e}")
-        return False
-
     return False
+
+def generate_new_filename(original_filename: str, pattern: str, bpm: float, key: str, camelot: str) -> str:
+    """
+    Generates new output filename using token replacement:
+    - {OriginalName}: base filename without extension
+    - {Key}: standard key
+    - {Camelot}: camelot key
+    - {BPM}: tempo in BPM
+    """
+    base, ext = os.path.splitext(original_filename)
+    new_name = pattern
+    new_name = new_name.replace("{OriginalName}", base)
+    new_name = new_name.replace("{Key}", key or "")
+    new_name = new_name.replace("{Camelot}", camelot or "")
+    new_name = new_name.replace("{BPM}", f"{bpm:.1f}" if bpm else "")
+
+    safe_name = "".join(c for c in new_name if c not in '<>:"/\\|?*').strip()
+    return f"{safe_name}{ext}"
