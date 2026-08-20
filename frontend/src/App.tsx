@@ -82,7 +82,7 @@ function App() {
                   Audio Analysis Studio
                 </h1>
                 <p className="text-slate-400 text-xs sm:text-sm mt-0.5">
-                  Multi-Engine Microservices • BeatNet BPM • MusicalKeyCNN Key • Madmom Chords • WhatsMyBitrate Quality & Spectrograms • Mutagen ID3 Tagging
+                  Multi-Engine Microservices • BeatNet BPM • MusicalKeyCNN Key • Madmom Chords • Laplacian Structure • WhatsMyBitrate Quality & Spectrograms • Mutagen ID3 Tagging
                 </p>
               </div>
             </div>
@@ -305,7 +305,7 @@ function App() {
                       </div>
                     </div>
 
-                    {/* Duration & Chords Count */}
+                    {/* Duration, Chords & Structure Count */}
                     <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 text-center shadow-lg">
                       <div className="text-[11px] text-slate-400 uppercase font-bold tracking-wider mb-1">
                         Duration
@@ -313,8 +313,8 @@ function App() {
                       <div className="text-lg font-bold text-white mt-1">
                         {activeAnalysis.duration ? `${activeAnalysis.duration.toFixed(1)}s` : '—'}
                       </div>
-                      <div className="text-[11px] text-purple-300 mt-1">
-                        {activeAnalysis.chords?.length || 0} Chord Segments
+                      <div className="text-[11px] text-purple-300 mt-1 truncate">
+                        {activeAnalysis.chords?.length || 0} Chords • {activeAnalysis.segments?.length || 0} Sections
                       </div>
                     </div>
                   </div>
@@ -322,7 +322,7 @@ function App() {
                   <div className="bg-slate-900/60 p-8 rounded-2xl border border-slate-800 text-center space-y-3">
                     <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-500"></div>
                     <p className="text-sm font-semibold text-slate-300">
-                      Analyzing audio with AI models (BeatNet, MusicalKeyCNN, Madmom, Quality Engine)...
+                      Analyzing audio with AI models (BeatNet, MusicalKeyCNN, Madmom, Structure, Quality)...
                     </p>
                   </div>
                 )}
@@ -333,6 +333,7 @@ function App() {
                     <WaveformPlayer
                       ref={playerRef}
                       audioUrl={activeAudioUrl}
+                      segments={activeAnalysis?.segments}
                       onTimeUpdate={setCurrentPlaybackTime}
                     />
                   </div>

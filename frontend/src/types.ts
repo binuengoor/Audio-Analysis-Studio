@@ -30,6 +30,13 @@ export interface QualityResult {
   spectrogram_image_path: string;
 }
 
+export interface SectionSegment {
+  start: number;
+  end: number;
+  label: string;
+  color: string;
+}
+
 export interface AnalysisResult {
   filename?: string;
   bpm: number;
@@ -40,6 +47,7 @@ export interface AnalysisResult {
   duration: number;
   chords?: ChordSegment[];
   quality?: QualityResult;
+  segments?: SectionSegment[];
 }
 
 export interface AudioFile {

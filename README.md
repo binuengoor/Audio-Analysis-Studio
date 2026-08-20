@@ -23,12 +23,18 @@ A high-performance audio analysis dashboard powered by an asynchronous **multi-e
   - **Tempo & BPM Detection:** [BeatNet](https://github.com/mjhydri/BeatNet) state-of-the-art DBN (Dynamic Bayesian Network) beat and downbeat tracking engine.
   - **Key & Camelot Detection:** [MusicalKeyCNN](https://github.com/danielfriis/musical-key-cnn) deep neural network predicting both Camelot wheel notations (`12A`, `8B`, etc.) and Standard Key (`C# minor`, `F major`, etc.).
   - **Chord Progression Recognition:** [Madmom](https://github.com/CPJKU/madmom) CNN + CRF (Conditional Random Field) chord segmentation and harmonic progression modeling.
+  - **Song Structural Segmentation Engine:** [Librosa](https://librosa.org/) & `scikit-learn` beat-synchronous CQT Chroma + MFCC Laplacian agglomerative segmentation detecting macro song sections (`Intro`, `Verse`, `Chorus`, `Bridge`, `Outro`).
   - **Audio Quality & Bitrate Engine:** "WhatsMyBitrate"-style inspection via `flac-detective`, `pyloudnorm`, `soundfile`, and `mutagen` extracting:
     - **Container Properties:** Codec (`FLAC`, `WAV`, `MP3`), bit depth (`16-bit`, `24-bit`, `32-bit`), sample rate (`44.1 kHz`, `48.0 kHz`), channels (`Stereo`/`Mono`), and stated bit rate.
-    - **Mastering Metrics:** Integrated **LUFS** loudness and sample/true peak in **dBFS**.
-    - **Authenticity & Cutoff:** True frequency cutoff (Hz), transcode verdict (`GENUINE`, `SUSPICIOUS`), and perceptual bitrate estimate (`64`, `128`, `192`, `320`, `Lossless`).
+    - **Mastering Metrics:** Integrated **LUFS** loudness (evaluated against **-14.0 LUFS** streaming standard) and sample/true peak in **dBFS** (with **-1.0 dB** ceiling target).
+    - **Authenticity & Cutoff:** True frequency cutoff (Hz), transcode verdict (`GENUINE LOSSLESS`, `NEAR LOSSLESS`, `SUSPICIOUS`), and perceptual bitrate estimate (`64`, `128`, `192`, `320`, `Lossless`).
     - **Linear Spectrogram Generation:** High-resolution linear-frequency spectrogram plots with red dashed cutoff line overlay.
-  - **API Gateway:** Lightweight, high-throughput FastAPI gateway orchestrating analysis workers in parallel using `asyncio.gather()`.
+  - **Asynchronous Distributed Job Queue:** Redis broker + Celery worker daemon (`celery -A celery_tasks worker`) enabling non-blocking multi-file batch drops and live status polling.
+  - **API Gateway:** Lightweight, high-throughput FastAPI gateway orchestrating parallel worker requests.
+
+- **WaveSurfer.js Regions & Song Structure Timeline:**
+  - **Waveform Regions:** Translucent color-coded section boundaries (`Intro`, `Verse`, `Chorus`, `Bridge`, `Outro`) painted directly onto the waveform.
+  - **Interactive Section Strip:** Clickable macro section pills with timestamp ranges and real-time active playback synchronization.
 
 - **Interactive & Collapsible Chord Progression Viewer:**
   - **Timeline View:** Horizontally scrollable timeline displaying timestamped chord blocks (`[0.0s - 1.3s] F#m`) with harmonic duration badges.
@@ -59,32 +65,46 @@ A high-performance audio analysis dashboard powered by an asynchronous **multi-e
 ## Architecture Overview
 
 ```
-                                ┌──────────────────────────┐
-                                │   Frontend (React/Vite)  │
-                                │   http://localhost:3000   │
-                                └─────────────┬────────────┘
-                                              │ HTTP
-                                              ▼
-                                ┌──────────────────────────┐
-                                │   API Gateway (FastAPI)  │
-                                │   http://localhost:8000   │
-                                └──────┬───┬───┬───┬───────┘
-                                       │   │   │   │  (asyncio.gather)
-             ┌─────────────────────────┘   │   │   └─────────────────────────┐
-             ▼                             ▼   │                             ▼
- ┌───────────────────────┐  ┌───────────────────▼───┐  ┌───────────────────────┐  ┌───────────────────────┐
- │       BPM Worker      │  │       Key Worker      │  │      Chord Worker     │  │     Quality Worker    │
- │       (BeatNet)       │  │    (MusicalKeyCNN)    │  │        (Madmom)       │  │ (WhatsMyBitrate/LUFS) │
- │      Port: 8001       │  │       Port: 8002      │  │       Port: 8003      │  │      Port: 8004       │
- └───────────────────────┘  └───────────────────────┘  └───────────────────────┘  └───────────────────────┘
-             │                          │                          │                          │
-             └──────────────────────────┴──────────────────────────┴──────────────────────────┘
-                                                       │
-                                                       ▼
-                                         ┌──────────────────────────┐
-                                         │    Shared Audio Volume   │
-                                         │  /app/data/shared_audio  │
-                                         └──────────────────────────┘
+                                      ┌──────────────────────────┐
+                                      │   Frontend (React/Vite)  │
+                                      │   http://localhost:3000   │
+                                      └─────────────┬────────────┘
+                                                    │ HTTP / Polling
+                                                    ▼
+                                      ┌──────────────────────────┐
+                                      │   API Gateway (FastAPI)  │
+                                      │   http://localhost:8000   │
+                                      └──────┬────────────┬──────┘
+                                             │            │ Enqueue Tasks
+                                             │            ▼
+                                             │    ┌───────────────┐
+                                             │    │     Redis     │
+                                             │    │   Port: 6379  │
+                                             │    └───────┬───────┘
+                                             │            │ Task Queue
+                                             │            ▼
+                                             │    ┌───────────────┐
+                                             │    │ Celery Worker │
+                                             │    │  (Async Exec) │
+                                             │    └───────┬───────┘
+                                             │            │
+                                             ▼            ▼  (5-Way Parallel Execution)
+ ┌─────────────────┬──────────────────┬───────────────────┼───────────────────┬─────────────────┐
+ │                 │                  │                   │                   │                 │
+ ▼                 ▼                  ▼                   ▼                   ▼                 ▼
+┌───────────────┐ ┌────────────────┐ ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│  BPM Worker   │ │   Key Worker   │ │  Chord Worker   │ │ Quality Worker  │ │Structure Worker │
+│   (BeatNet)   │ │(MusicalKeyCNN) │ │    (Madmom)     │ │(WhatsMyBitrate) │ │   (Laplacian)   │
+│  Port: 8001   │ │   Port: 8002   │ │   Port: 8003    │ │   Port: 8004    │ │   Port: 8005    │
+└───────┬───────┘ └────────┬───────┘ └────────┬────────┘ └────────┬────────┘ └────────┬────────┘
+        │                  │                  │                   │                   │
+        └──────────────────┴──────────────────┴───────────────────┴───────────────────┘
+                                                  │
+                                                  ▼
+                                    ┌──────────────────────────┐
+                                    │    Shared Audio Volume   │
+                                    │  /app/data/shared_audio  │
+                                    └──────────────────────────┘
 ```
 
 ---
@@ -108,6 +128,8 @@ docker compose up -d
 * **Key Worker:** [http://localhost:8002](http://localhost:8002)
 * **Chord Worker:** [http://localhost:8003](http://localhost:8003)
 * **Quality Worker:** [http://localhost:8004](http://localhost:8004)
+* **Structure Worker:** [http://localhost:8005](http://localhost:8005)
+* **Redis Broker:** `localhost:6379`
 
 To stop all services:
 ```bash

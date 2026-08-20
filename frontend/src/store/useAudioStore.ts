@@ -152,23 +152,60 @@ export const useAudioStore = create<AppState>((set, get) => ({
     // Refresh library with uploaded entries
     await get().fetchLibrary();
 
-    // Trigger batch analysis queue for all uploaded files
+    // Trigger Celery asynchronous batch queue for all uploaded files
     try {
-      await fetch(buildBackendUrl('/api/queue'), {
+      const batchRes = await fetch(buildBackendUrl('/api/analyze/batch'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filenames }),
       });
 
-      // Poll batch status until completed
+      if (!batchRes.ok) throw new Error('Failed to dispatch batch analysis');
+      const batchData = await batchRes.json();
+      const jobIds: string[] = batchData.job_ids || [];
+
+      if (jobIds.length === 0) {
+        set({ processing: false });
+        return;
+      }
+
+      // Poll each job every 2 seconds until completed
+      const pendingJobIds = new Set(jobIds);
+      const totalJobs = jobIds.length;
+
       const pollInterval = setInterval(async () => {
-        await get().pollBatchStatus();
-        const { processing } = get();
-        if (!processing) {
-          clearInterval(pollInterval);
-          await get().fetchLibrary();
+        for (const jobId of Array.from(pendingJobIds)) {
+          try {
+            const jobRes = await fetch(buildBackendUrl(`/api/jobs/${jobId}`));
+            if (jobRes.ok) {
+              const jobData = await jobRes.json();
+              if (jobData.status === 'SUCCESS') {
+                pendingJobIds.delete(jobId);
+                const completedAnalysis: AnalysisResult = jobData.result;
+                if (get().activeTitle === completedAnalysis.filename) {
+                  set({ activeAnalysis: completedAnalysis });
+                }
+              } else if (jobData.status === 'FAILURE') {
+                console.error(`Job ${jobId} failed:`, jobData.error);
+                pendingJobIds.delete(jobId);
+              }
+            }
+          } catch (e) {
+            console.error(`Error polling job ${jobId}`, e);
+          }
         }
-      }, 1000);
+
+        const remaining = pendingJobIds.size;
+        const progress = Math.round(((totalJobs - remaining) / totalJobs) * 100);
+
+        if (remaining === 0) {
+          clearInterval(pollInterval);
+          set({ processing: false, progress: 100 });
+          await get().fetchLibrary();
+        } else {
+          set({ processing: true, progress });
+        }
+      }, 2000);
 
     } catch (error) {
       console.error('Batch queue error:', error);

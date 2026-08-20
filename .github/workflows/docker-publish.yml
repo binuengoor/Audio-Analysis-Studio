@@ -49,3 +49,25 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/audio-analysis-studio-frontend:latest
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/audio-analysis-studio-frontend:${{ github.sha }}
+
+      - name: Build and push structure worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend/workers/structure_worker
+          file: ./backend/workers/structure_worker/Dockerfile
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/audio-analysis-studio-structure-worker:latest
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/audio-analysis-studio-structure-worker:${{ github.sha }}
+
+      - name: Build and push quality worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend/workers/quality_worker
+          file: ./backend/workers/quality_worker/Dockerfile
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/audio-analysis-studio-quality-worker:latest
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/audio-analysis-studio-quality-worker:${{ github.sha }}

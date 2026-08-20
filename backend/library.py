@@ -45,12 +45,14 @@ class LibraryManager:
         return entry
 
     def get_entry(self, id: str) -> Optional[LibraryEntry]:
+        self.load()
         for entry in self.entries:
             if entry.id == id:
                 return entry
         return None
     
     def get_entry_by_filename(self, filename: str) -> Optional[LibraryEntry]:
+        self.load()
         for entry in self.entries:
             if entry.filename == filename:
                 return entry
@@ -90,6 +92,7 @@ class LibraryManager:
             self.entries.remove(entry)
 
     def get_all(self) -> List[LibraryEntry]:
+        self.load()
         return self.entries
     
     def clear_inputs(self):
