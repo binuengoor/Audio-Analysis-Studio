@@ -1,0 +1,67 @@
+version: 2
+updates:
+  # Monitor GitHub Actions workflows
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Monitor Frontend npm packages
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+
+  # Monitor Backend Gateway Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+
+  # Monitor BPM Worker dependencies
+  - package-ecosystem: "pip"
+    directory: "/backend/workers/bpm_worker"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 5
+
+  # Monitor Key Worker dependencies
+  - package-ecosystem: "pip"
+    directory: "/backend/workers/key_worker"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 5
+
+  # Monitor Chord Worker dependencies
+  - package-ecosystem: "pip"
+    directory: "/backend/workers/chord_worker"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 5
+
+  # Monitor Quality Worker dependencies
+  - package-ecosystem: "pip"
+    directory: "/backend/workers/quality_worker"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  # Monitor Structure Worker dependencies
+  - package-ecosystem: "pip"
+    directory: "/backend/workers/structure_worker"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 5
+
+  # Monitor Docker base images
+  - package-ecosystem: "docker"
+    directory: "/backend"
+    schedule:
+      interval: "monthly"
+
+  - package-ecosystem: "docker"
+    directory: "/frontend"
+    schedule:
+      interval: "monthly"
