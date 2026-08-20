@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <!-- Modern Dark Squircle Background -->
+  <rect width="512" height="512" rx="128" fill="#111827" />
+
+  <!-- The 'A' Waveform Mark -->
+  <g fill="url(#brandGradient)">
+    <!-- Left EQ Bar -->
+    <rect x="164" y="176" width="40" height="220" rx="20" />
+    
+    <!-- Center EQ Bar (Peak) -->
+    <rect x="236" y="116" width="40" height="280" rx="20" />
+    
+    <!-- Right EQ Bar -->
+    <rect x="308" y="176" width="40" height="220" rx="20" />
+    
+    <!-- Horizontal Crossbar (Forms the 'A') -->
+    <rect x="164" y="276" width="184" height="40" rx="20" />
+  </g>
+
+  <!-- Color Palette -->
+  <defs>
+    <linearGradient id="brandGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#06B6D4" /> <!-- Vibrant Cyan -->
+      <stop offset="100%" stop-color="#8B5CF6" /> <!-- Deep Purple -->
+    </linearGradient>
+  </defs>
+</svg>

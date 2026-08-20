@@ -60,9 +60,21 @@ function App() {
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-900/60 p-6 rounded-2xl border border-slate-800 shadow-xl backdrop-blur-sm">
           <div>
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-gradient-to-br from-purple-500 to-sky-400 rounded-xl shadow-md shadow-purple-500/20">
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+              <div className="w-11 h-11 flex-shrink-0 shadow-lg shadow-purple-500/20 rounded-xl overflow-hidden border border-slate-700/60">
+                <svg viewBox="0 0 512 512" className="w-full h-full">
+                  <rect width="512" height="512" rx="128" fill="#111827" />
+                  <g fill="url(#headerBrandGradient)">
+                    <rect x="164" y="176" width="40" height="220" rx="20" />
+                    <rect x="236" y="116" width="40" height="280" rx="20" />
+                    <rect x="308" y="176" width="40" height="220" rx="20" />
+                    <rect x="164" y="276" width="184" height="40" rx="20" />
+                  </g>
+                  <defs>
+                    <linearGradient id="headerBrandGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#06B6D4" />
+                      <stop offset="100%" stopColor="#8B5CF6" />
+                    </linearGradient>
+                  </defs>
                 </svg>
               </div>
               <div>

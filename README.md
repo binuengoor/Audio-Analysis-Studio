@@ -1,6 +1,15 @@
-# Audio Analysis Studio – Key, BPM, Chords & Quality Inspection
+<div align="center">
 
-![Publish Docker images](https://github.com/binuengoor/Audio-Analysis-Studio/actions/workflows/docker-publish.yml/badge.svg)
+<img src="docs/images/logo.svg" alt="Audio Analysis Studio Logo" width="110" height="110" />
+
+# Audio Analysis Studio
+
+**AI-Powered Multi-Engine Audio Intelligence • Key, BPM, Chords & Quality Inspection**
+
+[![Publish Docker images](https://github.com/binuengoor/Audio-Analysis-Studio/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/binuengoor/Audio-Analysis-Studio/actions/workflows/docker-publish.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+</div>
 
 A high-performance audio analysis dashboard powered by an asynchronous **multi-engine microservices architecture** and a modern React dark-themed UI. Drop in any audio track, inspect BPM, Camelot Key, Standard Key, interactive chord progression timelines, master loudness (LUFS), frequency cutoffs, fake-lossless transcode verdicts, linear-frequency spectrograms, and automatically embed ID3 metadata tags.
 
