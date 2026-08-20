@@ -1,3 +1,4 @@
+# Python & Environments
 venv/
 .venv/
 __pycache__/
@@ -6,12 +7,15 @@ __pycache__/
 .coverage*
 *.egg-info/
 
-# Project Management
+# Project Management & Internal Docs
 project/
 
 # Editor & OS
 .DS_Store
 .vscode/
+.idea/
+*.swp
+*.swo
 
 # Env files
 .env
@@ -23,11 +27,21 @@ dist/
 frontend/dist/
 npm-debug.log*
 yarn-debug.log*
+*.log
 
-# Runtime audio data
+# Runtime Audio & Library Data
 music_in/
 data/input/*
 !data/input/.gitkeep
 data/output/*
 !data/output/.gitkeep
-
+data/shared_audio/
+data/library.json
+data/*.png
+data/*.wav
+data/*.mp3
+data/*.flac
+data/*.m4a
+data/*.ogg
+data/*.aiff
+.tempmediaStorage/
