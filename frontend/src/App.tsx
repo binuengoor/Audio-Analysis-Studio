@@ -199,7 +199,7 @@ function App() {
                             </li>
                             <li>
                               <code className="text-amber-300 font-mono font-semibold">{`{BPM}`}</code>
-                              <p className="text-slate-400 text-[10px]">Detected tempo (e.g. 125.0)</p>
+                              <p className="text-slate-400 text-[10px]">Detected tempo rounded to whole number (e.g. 125)</p>
                             </li>
                           </ul>
                         </div>

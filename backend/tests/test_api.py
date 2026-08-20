@@ -154,3 +154,18 @@ def test_celery_batch_and_jobs_api(mock_delay):
         assert job_data["job_id"] == "test-job-uuid-1234"
         assert job_data["status"] == "SUCCESS"
         assert job_data["result"]["segments"][0]["label"] == "Intro"
+
+def test_generate_new_filename_rounding():
+    from metadata import generate_new_filename
+
+    # Test 93.7 -> 94
+    name1 = generate_new_filename("Chekele.m4a", "{OriginalName} - {Key} - {BPM}", 93.7, "D minor", "7A")
+    assert name1 == "Chekele - D minor - 94.m4a"
+
+    # Test 103.4 -> 103
+    name2 = generate_new_filename("Track.wav", "{Camelot} - {BPM} - {OriginalName}", 103.4, "C# minor", "12A")
+    assert name2 == "12A - 103 - Track.wav"
+
+    # Test 125.0 -> 125
+    name3 = generate_new_filename("Song.mp3", "{BPM} - {Camelot} - {OriginalName}", 125.0, "A minor", "8A")
+    assert name3 == "125 - 8A - Song.mp3"

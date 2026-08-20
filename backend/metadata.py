@@ -131,14 +131,16 @@ def generate_new_filename(original_filename: str, pattern: str, bpm: float, key:
     - {OriginalName}: base filename without extension
     - {Key}: standard key
     - {Camelot}: camelot key
-    - {BPM}: tempo in BPM
+    - {BPM}: tempo in BPM rounded to the nearest whole integer
     """
     base, ext = os.path.splitext(original_filename)
     new_name = pattern
     new_name = new_name.replace("{OriginalName}", base)
     new_name = new_name.replace("{Key}", key or "")
     new_name = new_name.replace("{Camelot}", camelot or "")
-    new_name = new_name.replace("{BPM}", f"{bpm:.1f}" if bpm else "")
+    
+    bpm_val = str(int(round(bpm))) if bpm else ""
+    new_name = new_name.replace("{BPM}", bpm_val)
 
     safe_name = "".join(c for c in new_name if c not in '<>:"/\\|?*').strip()
     return f"{safe_name}{ext}"
