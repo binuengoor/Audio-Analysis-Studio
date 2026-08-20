@@ -36,8 +36,8 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: |
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/audio-analysis-key-bpm-backend:latest
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/audio-analysis-key-bpm-backend:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/audio-analysis-studio-backend:latest
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/audio-analysis-studio-backend:${{ github.sha }}
 
       - name: Build and push frontend image
         uses: docker/build-push-action@v6
@@ -47,5 +47,5 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: |
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/audio-analysis-key-bpm-frontend:latest
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/audio-analysis-key-bpm-frontend:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/audio-analysis-studio-frontend:latest
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/audio-analysis-studio-frontend:${{ github.sha }}

@@ -1,6 +1,6 @@
 # Audio Analysis Studio – Key, BPM, Chords & Quality Inspection
 
-![Publish Docker images](https://github.com/binuengoor/Audio-Analysis-Key-BPM/actions/workflows/docker-publish.yml/badge.svg)
+![Publish Docker images](https://github.com/binuengoor/Audio-Analysis-Studio/actions/workflows/docker-publish.yml/badge.svg)
 
 A high-performance audio analysis dashboard powered by an asynchronous **multi-engine microservices architecture** and a modern React dark-themed UI. Drop in any audio track, inspect BPM, Camelot Key, Standard Key, interactive chord progression timelines, master loudness (LUFS), frequency cutoffs, fake-lossless transcode verdicts, linear-frequency spectrograms, and automatically embed ID3 metadata tags.
 
@@ -82,8 +82,8 @@ A high-performance audio analysis dashboard powered by an asynchronous **multi-e
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/binuengoor/Audio-Analysis-Key-BPM.git
-cd Audio-Analysis-Key-BPM
+git clone https://github.com/binuengoor/Audio-Analysis-Studio.git
+cd Audio-Analysis-Studio
 ```
 
 ### 2. Start the Stack
