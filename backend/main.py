@@ -1,14 +1,16 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import shutil
 import os
 from typing import List
 from models import AnalyzeRequest, AnalysisResult, QueueRequest, QueueStatus, RenameRequest, LibraryEntry
 from processor import BatchProcessor
 from library import LibraryManager
+from metadata import write_audio_metadata
 
-app = FastAPI()
+app = FastAPI(title="Audio Analysis Gateway")
 
 # Configure CORS
 app.add_middleware(
@@ -19,8 +21,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Directory Setup
-DATA_DIR = "/data" if os.path.exists("/data") else "music_in"
+# Directory Setup with support for shared docker volume /app/data/shared_audio
+if os.path.exists("/app/data/shared_audio"):
+    DATA_DIR = "/app/data/shared_audio"
+elif os.path.exists("/data"):
+    DATA_DIR = "/data"
+else:
+    workspace_data = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
+    DATA_DIR = workspace_data if os.path.exists(workspace_data) else "music_in"
+
 INPUT_DIR = os.path.join(DATA_DIR, "input")
 OUTPUT_DIR = os.path.join(DATA_DIR, "output")
 
@@ -29,9 +38,9 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # Initialize Services
 library = LibraryManager(DATA_DIR)
-processor = BatchProcessor(INPUT_DIR) # Processor works on input dir
+processor = BatchProcessor(INPUT_DIR)
 
-# Mount directories
+# Mount directories for static access
 app.mount("/files/input", StaticFiles(directory=INPUT_DIR), name="input_files")
 app.mount("/files/output", StaticFiles(directory=OUTPUT_DIR), name="output_files")
 
@@ -45,44 +54,39 @@ def get_library():
 
 @app.post("/api/upload", response_model=LibraryEntry)
 async def upload_file(file: UploadFile = File(...)):
-    # Enforce single file workflow: Clear input directory
-    if os.path.exists(INPUT_DIR):
-        for filename in os.listdir(INPUT_DIR):
-            file_path = os.path.join(INPUT_DIR, filename)
-            try:
-                if os.path.isfile(file_path) or os.path.islink(file_path):
-                    os.unlink(file_path)
-                elif os.path.isdir(file_path):
-                    shutil.rmtree(file_path)
-            except Exception as e:
-                print(f"Failed to delete {file_path}. Reason: {e}")
-    
-    # Clear library metadata for inputs
-    library.clear_inputs()
-
     file_path = os.path.join(INPUT_DIR, file.filename)
-    print(f"DEBUG: Saving uploaded file to {file_path}")
+    print(f"Saving uploaded file to {file_path}")
     try:
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
         file_size = os.path.getsize(file_path)
-        print(f"DEBUG: Saved file size: {file_size} bytes")
+        print(f"Saved file size: {file_size} bytes")
 
-        # Create library entry
-        entry = library.add_entry(file.filename)
+        # Create or retrieve existing library entry
+        entry = library.get_entry_by_filename(file.filename)
+        if not entry:
+            entry = library.add_entry(file.filename)
+        else:
+            entry.input_path = file.filename
+            entry.status = "uploaded"
+            library.save()
+            
         return entry
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/analyze", response_model=AnalysisResult)
 async def analyze_audio(request: AnalyzeRequest):
-    # request.filename is the filename in INPUT_DIR
+    filename = request.filename
+    if not filename and request.file_path:
+        filename = os.path.basename(request.file_path)
+    if not filename:
+        raise HTTPException(status_code=400, detail="Either filename or file_path must be provided")
+
     try:
-        # Find entry to update
-        entry = library.get_entry_by_filename(request.filename)
-        
-        result = await processor.process_file(request.filename)
+        entry = library.get_entry_by_filename(filename)
+        result = await processor.process_file(filename)
         
         # Update library if entry exists
         if entry:
@@ -94,30 +98,27 @@ async def analyze_audio(request: AnalyzeRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/reanalyze", response_model=AnalysisResult)
+async def reanalyze_audio(request: AnalyzeRequest):
+    return await analyze_audio(request)
+
 @app.post("/api/queue")
 async def add_to_queue(request: QueueRequest):
-    # We assume filenames are already in the library from upload
     await processor.add_to_queue(request.filenames)
     return {"message": f"Added {len(request.filenames)} files to queue"}
 
 @app.get("/api/status", response_model=QueueStatus)
 async def get_status():
     status = processor.get_status()
-    
-    # Sync processor results to library
-    # This is a bit inefficient polling-based sync, but works for now
-    for filename, result in status.results.items():
+    for filename, result in status["results"].items():
         entry = library.get_entry_by_filename(filename)
         if entry and entry.status != "completed":
-             library.update_analysis(entry.id, result)
+            library.update_analysis(entry.id, result)
              
     return status
 
 @app.post("/api/process")
 async def process_output(request: RenameRequest):
-    # This replaces the old rename endpoint.
-    # It copies input -> output with new name.
-    
     entry = library.get_entry_by_filename(request.filename)
     if not entry or not entry.input_path:
         raise HTTPException(status_code=404, detail="Input file not found in library")
@@ -126,7 +127,6 @@ async def process_output(request: RenameRequest):
     if not os.path.exists(source_path):
         raise HTTPException(status_code=404, detail="Source file missing on disk")
 
-    # Generate new filename
     name, ext = os.path.splitext(request.filename)
     new_name = request.pattern.format(
         OriginalName=name,
@@ -134,12 +134,10 @@ async def process_output(request: RenameRequest):
         BPM=request.bpm,
         Camelot=request.camelot
     )
-    # Sanitize
-    new_name = "".join(c for c in new_name if c.isalnum() or c in (' ', '-', '_', '.'))
+    new_name = "".join(c for c in new_name if c.isalnum() or c in (' ', '-', '_', '.', '#', '+', '(', ')', '[', ']'))
     new_filename = f"{new_name}{ext}"
     dest_path = os.path.join(OUTPUT_DIR, new_filename)
 
-    # Handle duplicates
     counter = 1
     base_new_filename = new_filename
     while os.path.exists(dest_path):
@@ -150,10 +148,26 @@ async def process_output(request: RenameRequest):
 
     try:
         shutil.copy2(source_path, dest_path)
+        # Automatically write ID3 metadata tags into the newly created output file
+        write_audio_metadata(dest_path, request.bpm, request.camelot, request.key)
         library.set_output(entry.id, new_filename)
         return {"id": entry.id, "output_filename": new_filename}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/download/input/{filename}")
+def download_input(filename: str):
+    file_path = os.path.join(INPUT_DIR, filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(file_path, filename=filename, media_type="application/octet-stream")
+
+@app.get("/api/download/output/{filename}")
+def download_output(filename: str):
+    file_path = os.path.join(OUTPUT_DIR, filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(file_path, filename=filename, media_type="application/octet-stream")
 
 @app.delete("/api/library/{id}/input")
 def delete_input(id: str):
@@ -181,10 +195,25 @@ def delete_output(id: str):
         library.delete_output(id)
     return {"status": "deleted"}
 
+@app.delete("/api/library/{id}")
+def delete_entry(id: str):
+    entry = library.get_entry(id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    if entry.input_path:
+        path = os.path.join(INPUT_DIR, entry.input_path)
+        if os.path.exists(path):
+            os.remove(path)
+    if entry.output_path:
+        path = os.path.join(OUTPUT_DIR, entry.output_path)
+        if os.path.exists(path):
+            os.remove(path)
+    library.entries.remove(entry)
+    library.save()
+    return {"status": "deleted"}
+
 @app.delete("/api/library")
 def clear_library():
-    # Clear all entries
-    # 1. Delete all files in output directory
     if os.path.exists(OUTPUT_DIR):
         for filename in os.listdir(OUTPUT_DIR):
             file_path = os.path.join(OUTPUT_DIR, filename)
@@ -196,7 +225,6 @@ def clear_library():
             except Exception as e:
                 print(f"Failed to delete {file_path}. Reason: {e}")
 
-    # 2. Delete all files in input directory
     if os.path.exists(INPUT_DIR):
         for filename in os.listdir(INPUT_DIR):
             file_path = os.path.join(INPUT_DIR, filename)
@@ -208,10 +236,6 @@ def clear_library():
             except Exception as e:
                 print(f"Failed to delete {file_path}. Reason: {e}")
 
-    # 3. Clear library metadata
     library.entries = []
     library.save()
-    
     return {"status": "cleared"}
-
-

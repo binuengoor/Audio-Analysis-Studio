@@ -1,28 +1,10 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { useAudioStore } from '../store/useAudioStore';
-import { AudioFile } from '../types';
-import { buildBackendUrl } from '../config';
 
-const generateId = () => {
-  if (typeof crypto !== 'undefined') {
-    if ('randomUUID' in crypto && typeof crypto.randomUUID === 'function') {
-      return crypto.randomUUID();
-    }
-
-    if ('getRandomValues' in crypto && typeof crypto.getRandomValues === 'function') {
-      const array = new Uint32Array(4);
-      crypto.getRandomValues(array);
-      return Array.from(array, (segment) => segment.toString(16).padStart(8, '0')).join('-');
-    }
-  }
-
-  return `audio-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-};
-
-export const UploadZone = () => {
+export const UploadZone: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
-  const { addAudioFiles, updateFileStatus } = useAudioStore();
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const { addAudioFiles, processing, progress } = useAudioStore();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -34,62 +16,31 @@ export const UploadZone = () => {
     setIsDragging(false);
   };
 
-  const uploadFile = async (file: File, id: string) => {
-    const formData = new FormData();
-    formData.append('file', file);
+  const handleFiles = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
 
-    try {
-      const response = await fetch(buildBackendUrl('/api/upload'), {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error('Upload failed');
-      }
-      
-      // Upload complete, mark as pending for analysis
-      updateFileStatus(id, 'pending');
-    } catch (error) {
-      console.error('Upload error:', error);
-      updateFileStatus(id, 'error');
-    }
-  };
-
-  const processFiles = (files: File[]) => {
-    const validFiles = files.filter(file => 
-      file.type.startsWith('audio/') || 
-      /\.(mp3|wav|flac|m4a)$/i.test(file.name)
+    const validFiles = Array.from(files).filter(
+      (file) =>
+        file.type.startsWith('audio/') ||
+        /\.(mp3|wav|flac|m4a|aac|ogg|aiff)$/i.test(file.name)
     );
 
-    if (validFiles.length === 0) return;
-
-    const newAudioFiles: AudioFile[] = validFiles.map(file => ({
-      file,
-      id: generateId(),
-      status: 'uploading', // Start as uploading
-      previewUrl: URL.createObjectURL(file)
-    }));
-
-    addAudioFiles(newAudioFiles);
-
-    // Upload files
-    newAudioFiles.forEach(audioFile => {
-      uploadFile(audioFile.file, audioFile.id);
-    });
+    if (validFiles.length > 0) {
+      addAudioFiles(validFiles);
+    }
   };
 
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    processFiles(Array.from(e.dataTransfer.files));
-  }, [addAudioFiles, updateFileStatus]);
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragging(false);
+      handleFiles(e.dataTransfer.files);
+    },
+    [addAudioFiles]
+  );
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      processFiles(Array.from(e.target.files));
-    }
-    // Reset input so same file can be selected again if needed
+    handleFiles(e.target.files);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -106,32 +57,58 @@ export const UploadZone = () => {
       onDrop={handleDrop}
       onClick={handleClick}
       className={`
-        border-2 border-dashed rounded-lg p-12 text-center transition-colors cursor-pointer
-        ${isDragging ? 'border-sky-400 bg-sky-500/10' : 'border-slate-700 bg-slate-900/70 hover:border-slate-500'}
+        border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer relative overflow-hidden
+        ${
+          isDragging
+            ? 'border-purple-400 bg-purple-500/15 scale-[1.01]'
+            : 'border-slate-800 bg-slate-900/60 hover:border-slate-600 hover:bg-slate-900/90'
+        }
       `}
     >
-      <input 
-        type="file" 
+      <input
+        type="file"
         ref={fileInputRef}
         onChange={handleFileInput}
-        className="hidden" 
-        multiple 
-        accept="audio/*,.mp3,.wav,.flac,.m4a"
+        className="hidden"
+        multiple
+        accept="audio/*,.mp3,.wav,.flac,.m4a,.aac,.ogg,.aiff"
       />
-      <div className="flex flex-col items-center justify-center space-y-4 text-slate-200">
-        <div className="p-4 bg-slate-800 rounded-full">
-          <svg className="w-8 h-8 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+
+      <div className="flex flex-col items-center justify-center space-y-3">
+        <div className="p-3.5 bg-gradient-to-tr from-purple-600 to-sky-500 rounded-2xl text-white shadow-lg shadow-purple-500/20">
+          <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+            />
           </svg>
         </div>
+
         <div>
-          <p className="text-lg font-semibold text-white">
-            Drop audio files here
+          <p className="text-base font-bold text-white">
+            Drop audio tracks here or click to browse
           </p>
-          <p className="text-sm text-slate-400 mt-1">
-            MP3, WAV, FLAC, M4A
+          <p className="text-xs text-slate-400 mt-1">
+            Supports batch drops • MP3, WAV, FLAC, M4A, OGG, AIFF
           </p>
         </div>
+
+        {processing && (
+          <div className="w-full max-w-xs mt-2 space-y-1.5">
+            <div className="flex justify-between text-xs text-purple-300 font-medium">
+              <span>Processing Queue...</span>
+              <span>{progress}%</span>
+            </div>
+            <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+              <div
+                className="bg-gradient-to-r from-purple-500 to-sky-400 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,0 +1,7 @@
+numpy<1.24
+cython
+scipy<1.11
+madmom
+fastapi
+uvicorn
+pydantic

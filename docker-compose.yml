@@ -1,22 +1,86 @@
 services:
-  audio-analysis-backend:
-    image: ghcr.io/binuengoor/audio-analysis-key-bpm-backend:latest
-    container_name: audio-analysis-backend
-    platform: linux/amd64
-    restart: unless-stopped 
+  gateway:
+    build: ./backend
+    image: audio-analysis-gateway:latest
+    container_name: gateway
+    restart: unless-stopped
     ports:
       - "8000:8000"
     volumes:
-      - ./data:/data
+      - ./data:/app/data/shared_audio
     environment:
       - PYTHONUNBUFFERED=1
+    networks:
+      backend-net:
+        aliases:
+          - audio-analysis-backend
+          - gateway
+    depends_on:
+      - bpm-worker
+      - key-worker
+      - chord-worker
+
+  bpm-worker:
+    build: ./backend/workers/bpm_worker
+    image: audio-analysis-bpm-worker:latest
+    container_name: bpm-worker
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./data:/app/data/shared_audio
+    environment:
+      - PYTHONUNBUFFERED=1
+      - OMP_NUM_THREADS=4
+      - OPENBLAS_NUM_THREADS=4
+    networks:
+      - backend-net
+
+  key-worker:
+    build: ./backend/workers/key_worker
+    image: audio-analysis-key-worker:latest
+    container_name: key-worker
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./data:/app/data/shared_audio
+    environment:
+      - PYTHONUNBUFFERED=1
+      - OMP_NUM_THREADS=4
+      - OPENBLAS_NUM_THREADS=4
+      - TORCH_NUM_THREADS=4
+    networks:
+      - backend-net
+
+  chord-worker:
+    build: ./backend/workers/chord_worker
+    image: audio-analysis-chord-worker:latest
+    container_name: chord-worker
+    restart: unless-stopped
+    ports:
+      - "8003:8003"
+    volumes:
+      - ./data:/app/data/shared_audio
+    environment:
+      - PYTHONUNBUFFERED=1
+      - OMP_NUM_THREADS=4
+      - OPENBLAS_NUM_THREADS=4
+    networks:
+      - backend-net
 
   audio-analysis-frontend:
-    image: ghcr.io/binuengoor/audio-analysis-key-bpm-frontend:latest
+    build: ./frontend
+    image: audio-analysis-frontend:latest
     container_name: audio-analysis-frontend
-    platform: linux/amd64
-    restart: unless-stopped 
+    restart: unless-stopped
     ports:
       - "3000:80"
+    networks:
+      - backend-net
     depends_on:
-      - audio-analysis-backend
+      - gateway
+
+networks:
+  backend-net:
+    driver: bridge

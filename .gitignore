@@ -6,6 +6,9 @@ __pycache__/
 .coverage*
 *.egg-info/
 
+# Project Management
+project/
+
 # Editor & OS
 .DS_Store
 .vscode/

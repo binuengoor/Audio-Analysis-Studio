@@ -7,22 +7,23 @@ interface AppState {
   library: LibraryEntry[];
   processing: boolean;
   progress: number;
-  activeTab: 'individual' | 'bulk' | 'library';
-  activeFileId: string | null; // Track currently selected file
-  selectedLibraryEntry: LibraryEntry | null; // New state for library preview
-  setActiveTab: (tab: 'individual' | 'bulk' | 'library') => void;
-  setActiveFile: (id: string | null) => void;
-  setSelectedLibraryEntry: (entry: LibraryEntry | null) => void; // New action
-  addAudioFiles: (files: AudioFile[]) => void;
-  updateFileStatus: (id: string, status: AudioFile['status']) => void;
-  analyzeFile: (id: string) => Promise<void>;
-  startBatchProcessing: () => Promise<void>;
-  pollBatchStatus: () => Promise<void>;
-  processOutput: (id: string, pattern: string) => Promise<void>;
+  activeEntryId: string | null;
+  activeAnalysis: AnalysisResult | null;
+  activeAudioUrl: string | null;
+  activeTitle: string | null;
+  isAnalyzing: boolean;
+
   fetchLibrary: () => Promise<void>;
+  selectTrack: (entry: LibraryEntry) => void;
+  reanalyzeTrack: (filename: string) => Promise<void>;
+  addAudioFiles: (files: File[]) => Promise<void>;
+  updateFileStatus: (id: string, status: AudioFile['status']) => void;
+  pollBatchStatus: () => Promise<void>;
+  processOutput: (filename: string, pattern: string, bpm: number, key: string, camelot: string) => Promise<void>;
   deleteInput: (id: string) => Promise<void>;
   deleteOutput: (id: string) => Promise<void>;
-  clearLibrary: () => Promise<void>; // New action
+  deleteEntry: (id: string) => Promise<void>;
+  clearLibrary: () => Promise<void>;
 }
 
 export const useAudioStore = create<AppState>((set, get) => ({
@@ -30,162 +31,11 @@ export const useAudioStore = create<AppState>((set, get) => ({
   library: [],
   processing: false,
   progress: 0,
-  activeTab: 'individual',
-  activeFileId: null,
-  selectedLibraryEntry: null,
-  
-  setActiveTab: (tab) => {
-    set({ activeTab: tab });
-    if (tab === 'library') {
-      get().fetchLibrary();
-    }
-  },
-  setActiveFile: (id) => set({ activeFileId: id }),
-  setSelectedLibraryEntry: (entry) => set({ selectedLibraryEntry: entry }),
-  
-  addAudioFiles: (files) => set((state) => {
-    state.queue.forEach((item) => {
-      if (item.previewUrl && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
-        URL.revokeObjectURL(item.previewUrl);
-      }
-    });
-
-    return {
-      // Replace queue instead of appending to enforce single-file workflow
-      queue: files,
-      activeFileId: files.length > 0 ? files[0].id : null
-    };
-  }),
-  
-  updateFileStatus: (id, status) => set((state) => ({
-    queue: state.queue.map((f) => f.id === id ? { ...f, status } : f)
-  })),
-
-  analyzeFile: async (id: string) => {
-    const file = get().queue.find(f => f.id === id);
-    if (!file) return;
-
-    set((state) => ({
-      queue: state.queue.map(f => f.id === id ? { ...f, status: 'processing' } : f)
-    }));
-
-    try {
-      const response = await fetch(buildBackendUrl('/api/analyze'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: file.file.name }),
-      });
-
-      if (!response.ok) throw new Error('Analysis failed');
-
-      const result: AnalysisResult = await response.json();
-
-      set((state) => ({
-        queue: state.queue.map(f => f.id === id ? { 
-          ...f, 
-          status: 'completed',
-          result 
-        } : f)
-      }));
-    } catch (error) {
-      console.error(error);
-      set((state) => ({
-        queue: state.queue.map(f => f.id === id ? { ...f, status: 'error' } : f)
-      }));
-    }
-  },
-
-  startBatchProcessing: async () => {
-    const { queue } = get();
-    const pendingFiles = queue.filter(f => f.status === 'pending');
-    if (pendingFiles.length === 0) return;
-
-    set({ processing: true });
-
-    try {
-      const filenames = pendingFiles.map(f => f.file.name);
-      await fetch(buildBackendUrl('/api/queue'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filenames }),
-      });
-      
-      // Start polling
-      const pollInterval = setInterval(async () => {
-        await get().pollBatchStatus();
-        const { processing } = get();
-        if (!processing) {
-          clearInterval(pollInterval);
-        }
-      }, 1000);
-
-    } catch (error) {
-      console.error('Batch start failed', error);
-      set({ processing: false });
-    }
-  },
-
-  pollBatchStatus: async () => {
-    try {
-      const response = await fetch(buildBackendUrl('/api/status'));
-      const status = await response.json();
-      
-      set((state: AppState) => {
-        // Update queue items with results if available
-        const newQueue = state.queue.map(item => {
-          const result = status.results[item.file.name];
-          if (result) {
-            return { ...item, status: 'completed' as const, result };
-          }
-          if (item.file.name === status.current_file) {
-            return { ...item, status: 'processing' as const };
-          }
-          return item;
-        });
-
-        return {
-          processing: status.is_processing,
-          progress: status.total_count > 0 ? (status.processed_count / status.total_count) * 100 : 0,
-          queue: newQueue
-        };
-      });
-    } catch (error) {
-      console.error('Polling failed', error);
-    }
-  },
-
-  processOutput: async (id: string, pattern: string) => {
-    // This replaces renameFile
-    const file = get().queue.find(f => f.id === id);
-    if (!file || !file.result) return;
-
-    try {
-      const response = await fetch(buildBackendUrl('/api/process'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          filename: file.file.name,
-          pattern,
-          bpm: file.result.bpm,
-          key: file.result.key_standard,
-          camelot: file.result.key_camelot
-        }),
-      });
-
-      if (!response.ok) throw new Error('Process failed');
-
-      // Refresh library if we are in library view so the table updates immediately
-      if (get().activeTab === 'library') {
-        await get().fetchLibrary();
-      }
-
-      alert('File processed and saved to library!');
-
-    } catch (error) {
-      console.error('Process failed', error);
-      alert('Failed to process file');
-    }
-  },
+  activeEntryId: null,
+  activeAnalysis: null,
+  activeAudioUrl: null,
+  activeTitle: null,
+  isAnalyzing: false,
 
   fetchLibrary: async () => {
     try {
@@ -194,13 +44,30 @@ export const useAudioStore = create<AppState>((set, get) => ({
       const newLibrary: LibraryEntry[] = await response.json();
 
       set((state: AppState) => {
-        const preservedSelection = state.selectedLibraryEntry
-          ? newLibrary.find((entry) => entry.id === state.selectedLibraryEntry?.id)
+        // Auto-select first analyzed entry if none active
+        let currentActive = state.activeEntryId 
+          ? newLibrary.find((e) => e.id === state.activeEntryId)
           : null;
+
+        if (!currentActive && newLibrary.length > 0) {
+          currentActive = newLibrary[0];
+        }
+
+        const activeAnalysis = currentActive?.analysis ?? state.activeAnalysis;
+        const activeAudioUrl = currentActive 
+          ? (currentActive.output_path 
+              ? buildBackendUrl(`/files/output/${encodeURIComponent(currentActive.output_path)}`)
+              : currentActive.input_path 
+                ? buildBackendUrl(`/files/input/${encodeURIComponent(currentActive.input_path)}`)
+                : null)
+          : state.activeAudioUrl;
 
         return {
           library: newLibrary,
-          selectedLibraryEntry: preservedSelection ?? null,
+          activeEntryId: currentActive?.id ?? null,
+          activeAnalysis,
+          activeAudioUrl,
+          activeTitle: currentActive?.filename ?? state.activeTitle,
         };
       });
     } catch (error) {
@@ -208,10 +75,174 @@ export const useAudioStore = create<AppState>((set, get) => ({
     }
   },
 
+  selectTrack: (entry: LibraryEntry) => {
+    const audioUrl = entry.output_path 
+      ? buildBackendUrl(`/files/output/${encodeURIComponent(entry.output_path)}`)
+      : entry.input_path 
+        ? buildBackendUrl(`/files/input/${encodeURIComponent(entry.input_path)}`)
+        : null;
+
+    set({
+      activeEntryId: entry.id,
+      activeAnalysis: entry.analysis,
+      activeAudioUrl: audioUrl,
+      activeTitle: entry.filename,
+    });
+  },
+
+  reanalyzeTrack: async (filename: string) => {
+    set({ isAnalyzing: true });
+    try {
+      const response = await fetch(buildBackendUrl('/api/reanalyze'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename }),
+      });
+
+      if (!response.ok) throw new Error('Re-analysis failed');
+      const result: AnalysisResult = await response.json();
+
+      set({ activeAnalysis: result, isAnalyzing: false });
+      await get().fetchLibrary();
+    } catch (error) {
+      console.error('Re-analysis failed:', error);
+      set({ isAnalyzing: false });
+      alert(`Re-analysis failed: ${error}`);
+    }
+  },
+
+  addAudioFiles: async (files: File[]) => {
+    if (files.length === 0) return;
+
+    set({ processing: true, progress: 0 });
+
+    const filenames: string[] = [];
+
+    for (const file of files) {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const uploadRes = await fetch(buildBackendUrl('/api/upload'), {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (uploadRes.ok) {
+          const entry: LibraryEntry = await uploadRes.json();
+          filenames.push(entry.filename);
+          // Set preview URL for immediate display
+          set({
+            activeEntryId: entry.id,
+            activeTitle: entry.filename,
+            activeAudioUrl: URL.createObjectURL(file),
+            activeAnalysis: null,
+          });
+        }
+      } catch (err) {
+        console.error('File upload failed for', file.name, err);
+      }
+    }
+
+    if (filenames.length === 0) {
+      set({ processing: false });
+      return;
+    }
+
+    // Refresh library with uploaded entries
+    await get().fetchLibrary();
+
+    // Trigger batch analysis queue for all uploaded files
+    try {
+      await fetch(buildBackendUrl('/api/queue'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filenames }),
+      });
+
+      // Poll batch status until completed
+      const pollInterval = setInterval(async () => {
+        await get().pollBatchStatus();
+        const { processing } = get();
+        if (!processing) {
+          clearInterval(pollInterval);
+          await get().fetchLibrary();
+        }
+      }, 1000);
+
+    } catch (error) {
+      console.error('Batch queue error:', error);
+      set({ processing: false });
+    }
+  },
+
+  updateFileStatus: (id: string, status: AudioFile['status']) => {
+    set((state) => ({
+      queue: state.queue.map((f) => f.id === id ? { ...f, status } : f)
+    }));
+  },
+
+  pollBatchStatus: async () => {
+    try {
+      const response = await fetch(buildBackendUrl('/api/status'));
+      const status = await response.json();
+      
+      set((state: AppState) => {
+        const isProc = status.is_processing;
+        const total = status.total_count || 1;
+        const processed = status.processed_count || 0;
+        const progress = Math.round((processed / total) * 100);
+
+        // Update active analysis if current active file finished
+        let currentAnalysis = state.activeAnalysis;
+        if (state.activeTitle && status.results[state.activeTitle]) {
+          currentAnalysis = status.results[state.activeTitle];
+        }
+
+        return {
+          processing: isProc,
+          progress: isProc ? progress : 100,
+          activeAnalysis: currentAnalysis,
+        };
+      });
+
+      if (!status.is_processing) {
+        await get().fetchLibrary();
+      }
+    } catch (error) {
+      console.error('Polling failed', error);
+    }
+  },
+
+  processOutput: async (filename: string, pattern: string, bpm: number, key: string, camelot: string) => {
+    try {
+      const response = await fetch(buildBackendUrl('/api/process'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename,
+          pattern,
+          bpm,
+          key,
+          camelot,
+        }),
+      });
+
+      if (!response.ok) throw new Error('Processing failed');
+      const data = await response.json();
+
+      await get().fetchLibrary();
+      alert(`Success! Processed & saved as: ${data.output_filename}`);
+    } catch (error) {
+      console.error('Process error:', error);
+      alert('Failed to process file');
+    }
+  },
+
   deleteInput: async (id: string) => {
     try {
       await fetch(buildBackendUrl(`/api/library/${id}/input`), { method: 'DELETE' });
-      get().fetchLibrary();
+      await get().fetchLibrary();
     } catch (error) {
       console.error('Delete input failed', error);
     }
@@ -220,9 +251,18 @@ export const useAudioStore = create<AppState>((set, get) => ({
   deleteOutput: async (id: string) => {
     try {
       await fetch(buildBackendUrl(`/api/library/${id}/output`), { method: 'DELETE' });
-      get().fetchLibrary();
+      await get().fetchLibrary();
     } catch (error) {
       console.error('Delete output failed', error);
+    }
+  },
+
+  deleteEntry: async (id: string) => {
+    try {
+      await fetch(buildBackendUrl(`/api/library/${id}`), { method: 'DELETE' });
+      await get().fetchLibrary();
+    } catch (error) {
+      console.error('Delete entry failed', error);
     }
   },
 
@@ -232,7 +272,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
         method: 'DELETE',
       });
       if (!response.ok) throw new Error('Failed to clear library');
-      set({ library: [], selectedLibraryEntry: null });
+      set({ library: [], activeEntryId: null, activeAnalysis: null, activeAudioUrl: null, activeTitle: null });
     } catch (error) {
       console.error('Failed to clear library', error);
       alert('Failed to clear library');

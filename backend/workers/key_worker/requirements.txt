@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+pydantic
+librosa
+numpy<2.0
+scipy
+pandas
+mutagen

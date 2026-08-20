@@ -1,24 +1,24 @@
-FROM ghcr.io/mtg/essentia:bullseye-v2.1_beta5
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Install system dependencies for audio codecs and file processing
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    libsndfile1 \
     build-essential \
-    python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements file
+# Copy requirements file and install Python dependencies
 COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# Install Python dependencies
-RUN pip3 install --no-cache-dir -r requirements.txt
-
-# Copy application code
+# Copy application source code
 COPY . .
 
-# Expose FastAPI port
+# Expose Gateway FastAPI port
 EXPOSE 8000
 
-# Run the application
+# Run FastAPI Gateway
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

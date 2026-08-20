@@ -27,7 +27,8 @@ class LibraryManager:
     def save(self):
         try:
             with open(self.db_path, "w") as f:
-                json.dump([entry.dict() for entry in self.entries], f, indent=2)
+                dump_list = [entry.model_dump() if hasattr(entry, "model_dump") else entry.dict() for entry in self.entries]
+                json.dump(dump_list, f, indent=2)
         except Exception as e:
             print(f"Error saving library: {e}")
 

@@ -1,10 +1,18 @@
+export interface ChordSegment {
+  start: number;
+  end: number;
+  chord: string;
+}
+
 export interface AnalysisResult {
+  filename?: string;
   bpm: number;
   bpm_confidence: number;
   key_standard: string;
   key_camelot: string;
   key_confidence: number;
   duration: number;
+  chords?: ChordSegment[];
 }
 
 export interface AudioFile {

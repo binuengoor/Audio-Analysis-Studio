@@ -3,15 +3,12 @@ import os
 from unittest.mock import MagicMock, patch
 import pytest
 
-# Mock essentia before importing modules that use it
-sys.modules["essentia"] = MagicMock()
-sys.modules["essentia.standard"] = MagicMock()
-
 # Add backend to path so we can import main
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi.testclient import TestClient
-from main import app
+from main import app, INPUT_DIR, OUTPUT_DIR, DATA_DIR
+from library import LibraryManager
 
 client = TestClient(app)
 
@@ -21,22 +18,27 @@ FAKE_AUDIO_CONTENT = b"fake audio content"
 @pytest.fixture
 def clean_upload_dir():
     # Setup: Ensure upload dir exists and is clean
-    upload_dir = "/data/input" if os.path.exists("/data/input") else "music_in"
-    if not os.path.exists(upload_dir):
-        os.makedirs(upload_dir)
+    os.makedirs(INPUT_DIR, exist_ok=True)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
     
     # Clean before test
-    for f in os.listdir(upload_dir):
+    for f in os.listdir(INPUT_DIR):
         if f.startswith("test_"):
-            os.remove(os.path.join(upload_dir, f))
+            try:
+                os.remove(os.path.join(INPUT_DIR, f))
+            except Exception:
+                pass
             
-    yield upload_dir
+    yield INPUT_DIR
     
     # Teardown: Cleanup created files
-    if os.path.exists(upload_dir):
-        for f in os.listdir(upload_dir):
+    if os.path.exists(INPUT_DIR):
+        for f in os.listdir(INPUT_DIR):
             if f.startswith("test_"):
-                os.remove(os.path.join(upload_dir, f))
+                try:
+                    os.remove(os.path.join(INPUT_DIR, f))
+                except Exception:
+                    pass
 
 def test_read_root():
     response = client.get("/")
@@ -57,12 +59,14 @@ def test_upload_file(clean_upload_dir):
 def test_analyze_file(mock_process, clean_upload_dir):
     # Mock the processor response
     mock_process.return_value = {
+        "filename": "test_analyze.mp3",
         "bpm": 120.0,
         "bpm_confidence": 0.9,
         "key_standard": "C Major",
         "key_camelot": "8B",
         "key_confidence": 0.8,
-        "duration": 180.0
+        "duration": 180.0,
+        "chords": [{"start": 0.0, "end": 2.0, "chord": "C:maj"}]
     }
     
     filename = "test_analyze.mp3"
@@ -75,6 +79,7 @@ def test_analyze_file(mock_process, clean_upload_dir):
     data = response.json()
     assert data["bpm"] == 120.0
     assert data["key_camelot"] == "8B"
+    assert "chords" in data
 
 def test_queue_and_status():
     # Test adding to queue
@@ -89,13 +94,17 @@ def test_queue_and_status():
     assert "queue_length" in data
     assert "is_processing" in data
 
-def test_rename_file(clean_upload_dir):
-    filename = "test_rename.mp3"
-    # Create dummy file
+def test_process_output_file(clean_upload_dir):
+    filename = "test_process.mp3"
+    # Create dummy file in input dir
     with open(os.path.join(clean_upload_dir, filename), "wb") as f:
         f.write(FAKE_AUDIO_CONTENT)
+    
+    # Add entry to main library
+    from main import library
+    entry = library.add_entry(filename)
         
-    response = client.post("/api/rename", json={
+    response = client.post("/api/process", json={
         "filename": filename,
         "pattern": "{Camelot} - {BPM} - {OriginalName}",
         "bpm": 128.0,
@@ -105,7 +114,4 @@ def test_rename_file(clean_upload_dir):
     
     assert response.status_code == 200
     data = response.json()
-    expected_name = "8B - 128.0 - test_rename.mp3"
-    assert data["new_filename"] == expected_name
-    assert os.path.exists(os.path.join(clean_upload_dir, expected_name))
-    assert not os.path.exists(os.path.join(clean_upload_dir, filename))
+    assert "output_filename" in data

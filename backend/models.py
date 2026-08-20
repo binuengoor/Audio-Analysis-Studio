@@ -1,16 +1,24 @@
 from pydantic import BaseModel
 from typing import Optional, List, Dict
 
+class ChordSegment(BaseModel):
+    start: float
+    end: float
+    chord: str
+
 class AnalysisResult(BaseModel):
+    filename: Optional[str] = None
     bpm: float
-    bpm_confidence: float
+    bpm_confidence: float = 0.9
     key_standard: str
     key_camelot: str
-    key_confidence: float
-    duration: float
+    key_confidence: float = 0.95
+    duration: float = 0.0
+    chords: List[ChordSegment] = []
 
 class AnalyzeRequest(BaseModel):
-    filename: str
+    filename: Optional[str] = None
+    file_path: Optional[str] = None
 
 class QueueRequest(BaseModel):
     filenames: List[str]
@@ -38,5 +46,3 @@ class LibraryEntry(BaseModel):
     analysis: Optional[AnalysisResult] = None
     created_at: float
     status: str  # uploaded, pending, processing, completed, error
-
-
