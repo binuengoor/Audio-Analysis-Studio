@@ -81,15 +81,16 @@ function App() {
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
                   Audio Analysis Studio
                 </h1>
-                <p className="text-slate-400 text-xs sm:text-sm mt-0.5">
-                  Multi-Engine Microservices • BeatNet BPM • MusicalKeyCNN Key • Madmom Chords • Laplacian Structure • WhatsMyBitrate Quality & Spectrograms • Mutagen ID3 Tagging
-                </p>
+                <div className="text-slate-400 text-xs sm:text-sm mt-0.5 space-y-0.5 leading-snug">
+                  <p>Multi-Engine Microservices • BeatNet BPM • MusicalKeyCNN Key • Madmom Chords</p>
+                  <p className="text-slate-500">• Laplacian Structure • WhatsMyBitrate Quality & Spectrograms • Mutagen ID3 Tagging</p>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 rounded-full font-medium flex items-center gap-1.5">
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <span className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-3.5 py-1.5 rounded-full font-medium flex items-center gap-1.5 whitespace-nowrap shadow-sm">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
               Microservices Live
             </span>
