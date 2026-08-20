@@ -1,6 +1,6 @@
 fastapi==0.115.6
 uvicorn==0.34.0
-librosa==0.10.2.post1
+librosa==1.0.0
 scikit-learn==1.6.1
 scipy==1.15.1
 soundfile==0.13.1
