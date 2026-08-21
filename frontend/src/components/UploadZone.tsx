@@ -22,7 +22,8 @@ export const UploadZone: React.FC = () => {
     const validFiles = Array.from(files).filter(
       (file) =>
         file.type.startsWith('audio/') ||
-        /\.(mp3|wav|flac|m4a|aac|ogg|aiff)$/i.test(file.name)
+        file.type.startsWith('video/') ||
+        /\.(mp3|wav|flac|m4a|aac|ogg|aiff|aif|alac|opus|mp4)$/i.test(file.name)
     );
 
     if (validFiles.length > 0) {

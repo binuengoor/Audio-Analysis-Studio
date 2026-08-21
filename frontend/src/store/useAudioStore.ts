@@ -114,7 +114,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
   addAudioFiles: async (files: File[]) => {
     if (files.length === 0) return;
 
-    set({ processing: true, progress: 0 });
+    set({ processing: true, isAnalyzing: true, progress: 0 });
 
     const filenames: string[] = [];
 
@@ -138,6 +138,8 @@ export const useAudioStore = create<AppState>((set, get) => ({
             activeAudioUrl: URL.createObjectURL(file),
             activeAnalysis: null,
           });
+        } else {
+          console.error('Upload failed with status', uploadRes.status);
         }
       } catch (err) {
         console.error('File upload failed for', file.name, err);
@@ -145,7 +147,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
     }
 
     if (filenames.length === 0) {
-      set({ processing: false });
+      set({ processing: false, isAnalyzing: false });
       return;
     }
 
@@ -165,7 +167,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
       const jobIds: string[] = batchData.job_ids || [];
 
       if (jobIds.length === 0) {
-        set({ processing: false });
+        set({ processing: false, isAnalyzing: false });
         return;
       }
 
@@ -185,6 +187,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
                 if (get().activeTitle === completedAnalysis.filename) {
                   set({ activeAnalysis: completedAnalysis });
                 }
+                await get().fetchLibrary();
               } else if (jobData.status === 'FAILURE') {
                 console.error(`Job ${jobId} failed:`, jobData.error);
                 pendingJobIds.delete(jobId);
@@ -200,7 +203,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
 
         if (remaining === 0) {
           clearInterval(pollInterval);
-          set({ processing: false, progress: 100 });
+          set({ processing: false, isAnalyzing: false, progress: 100 });
           await get().fetchLibrary();
         } else {
           set({ processing: true, progress });
@@ -209,7 +212,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
 
     } catch (error) {
       console.error('Batch queue error:', error);
-      set({ processing: false });
+      set({ processing: false, isAnalyzing: false });
     }
   },
 
