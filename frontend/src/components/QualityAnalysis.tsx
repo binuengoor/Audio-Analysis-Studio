@@ -7,7 +7,8 @@ interface QualityAnalysisProps {
 }
 
 export const QualityAnalysis: React.FC<QualityAnalysisProps> = ({ quality }) => {
-  const [isExpanded, setIsExpanded] = useState(true);
+  // Collapsed by default
+  const [isExpanded, setIsExpanded] = useState(false);
   const [showFullSpectrogram, setShowFullSpectrogram] = useState(false);
 
   const { container, mastering, authenticity, spectrogram_image_path } = quality;
@@ -194,7 +195,7 @@ export const QualityAnalysis: React.FC<QualityAnalysisProps> = ({ quality }) => 
               </svg>
             </div>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              WhatsMyBitrate Engine • Container Properties, Integrated LUFS & True Peak
+              WhatsMyBitrate & PyLoudNorm Engine
             </p>
           </div>
         </button>

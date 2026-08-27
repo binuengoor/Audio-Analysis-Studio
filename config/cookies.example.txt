@@ -1,0 +1,8 @@
+# Place your exported YouTube/browser cookies.txt file here as 'cookies.txt'
+# This allows yt-dlp to bypass YouTube bot challenges, age-restricted videos, and IP rate limits.
+#
+# How to export cookies:
+# 1. Install browser extension (e.g. "Get cookies.txt locally" for Chrome/Firefox)
+# 2. Log in to YouTube / SoundCloud
+# 3. Export cookies for youtube.com
+# 4. Save file as 'config/cookies.txt'

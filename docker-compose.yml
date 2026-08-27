@@ -34,6 +34,8 @@ services:
       - chord-worker
       - quality-worker
       - structure-worker
+      - downloader-worker
+      - stretch-worker
 
   celery-worker:
     build: ./backend
@@ -59,6 +61,8 @@ services:
       - chord-worker
       - quality-worker
       - structure-worker
+      - downloader-worker
+      - stretch-worker
 
   structure-worker:
     build: ./backend/workers/structure_worker
@@ -148,6 +152,44 @@ services:
       - PYTHONUNBUFFERED=1
       - OMP_NUM_THREADS=4
       - OPENBLAS_NUM_THREADS=4
+    networks:
+      - backend-net
+
+  stretch-worker:
+    build: ./backend/workers/stretch_worker
+    image: audio-analysis-stretch-worker:latest
+    # To use prebuilt GitHub Container Registry image instead of local build, uncomment:
+    # image: ghcr.io/binuengoor/audio-analysis-studio-stretch-worker:latest
+    container_name: stretch-worker
+    restart: unless-stopped
+    ports:
+      - "8007:8007"
+    volumes:
+      - ./data:/app/data/shared_audio
+    environment:
+      - PYTHONUNBUFFERED=1
+      - OMP_NUM_THREADS=4
+      - OPENBLAS_NUM_THREADS=4
+    networks:
+      - backend-net
+
+  downloader-worker:
+    build: ./backend/workers/downloader_worker
+    image: audio-analysis-downloader-worker:latest
+    # To use prebuilt GitHub Container Registry image instead of local build, uncomment:
+    # image: ghcr.io/binuengoor/audio-analysis-studio-downloader-worker:latest
+    container_name: downloader-worker
+    restart: unless-stopped
+    ports:
+      - "8006:8006"
+    volumes:
+      - ./data:/app/data/shared_audio
+      - ./config:/app/cookies
+    environment:
+      - PYTHONUNBUFFERED=1
+      - AUTO_UPDATE_YTDLP=true
+      - SHARED_DATA_DIR=/app/data/shared_audio
+      - COOKIES_FILE=/app/cookies/cookies.txt
     networks:
       - backend-net
 

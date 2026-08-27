@@ -114,6 +114,189 @@ class BatchProcessor:
         }
         return result
 
+    async def analyze_basic(self, file_path: str, filename: str = "") -> dict:
+        """Runs fast BPM and Key analysis in parallel and retrieves duration."""
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        async with httpx.AsyncClient() as client:
+            bpm_task = self._call_worker(client, BPM_WORKER_URL, file_path)
+            key_task = self._call_worker(client, KEY_WORKER_URL, file_path)
+            bpm_res, key_res = await asyncio.gather(bpm_task, key_task)
+
+        bpm = float(bpm_res.get("bpm", 120.0))
+        bpm_confidence = float(bpm_res.get("bpm_confidence", 0.9))
+        key_camelot = str(key_res.get("key_camelot", key_res.get("key", "8A")))
+        key_standard = str(key_res.get("key_standard", "A minor"))
+        key_confidence = float(key_res.get("key_confidence", 0.95))
+        duration = get_audio_duration(file_path)
+
+        return {
+            "filename": filename or os.path.basename(file_path),
+            "bpm": bpm,
+            "bpm_confidence": bpm_confidence,
+            "key_standard": key_standard,
+            "key_camelot": key_camelot,
+            "key_confidence": key_confidence,
+            "duration_seconds": duration,
+        }
+
+    async def analyze_bpm_only(self, file_path: str, filename: str = "") -> dict:
+        """Runs BPM analysis only."""
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        async with httpx.AsyncClient() as client:
+            bpm_res = await self._call_worker(client, BPM_WORKER_URL, file_path)
+
+        return {
+            "filename": filename or os.path.basename(file_path),
+            "bpm": float(bpm_res.get("bpm", 120.0)),
+            "bpm_confidence": float(bpm_res.get("bpm_confidence", 0.9)),
+        }
+
+    async def analyze_key_only(self, file_path: str, filename: str = "") -> dict:
+        """Runs Key analysis only."""
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        async with httpx.AsyncClient() as client:
+            key_res = await self._call_worker(client, KEY_WORKER_URL, file_path)
+
+        return {
+            "filename": filename or os.path.basename(file_path),
+            "key_standard": str(key_res.get("key_standard", "A minor")),
+            "key_camelot": str(key_res.get("key_camelot", key_res.get("key", "8A"))),
+            "key_confidence": float(key_res.get("key_confidence", 0.95)),
+        }
+
+    async def analyze_structure_only(self, file_path: str, filename: str = "") -> dict:
+        """Runs structural segmentation analysis only."""
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        async with httpx.AsyncClient() as client:
+            structure_res = await self._call_worker(client, STRUCTURE_WORKER_URL, file_path)
+
+        raw_segments = structure_res.get("segments", []) if isinstance(structure_res, dict) else []
+        segments = []
+        if isinstance(raw_segments, list):
+            for s in raw_segments:
+                if isinstance(s, dict):
+                    segments.append({
+                        "start": float(s.get("start", 0.0)),
+                        "end": float(s.get("end", 0.0)),
+                        "label": str(s.get("label", "Section")),
+                        "color": str(s.get("color", "rgba(99, 102, 241, 0.20)"))
+                    })
+
+        duration = get_audio_duration(file_path)
+        return {
+            "filename": filename or os.path.basename(file_path),
+            "duration_seconds": duration,
+            "segments": segments,
+        }
+
+    async def analyze_chords_only(self, file_path: str, filename: str = "") -> dict:
+        """Runs chord progression analysis only."""
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        async with httpx.AsyncClient() as client:
+            chord_res = await self._call_worker(client, CHORD_WORKER_URL, file_path)
+
+        raw_chords = chord_res.get("chords", chord_res if isinstance(chord_res, list) else [])
+        chords = []
+        if isinstance(raw_chords, list):
+            for c in raw_chords:
+                if isinstance(c, dict):
+                    chords.append({
+                        "start": float(c.get("start", 0.0)),
+                        "end": float(c.get("end", 0.0)),
+                        "chord": str(c.get("chord", "N"))
+                    })
+
+        duration = get_audio_duration(file_path)
+        return {
+            "filename": filename or os.path.basename(file_path),
+            "duration_seconds": duration,
+            "chords": chords,
+        }
+
+    async def analyze_quality_only(self, file_path: str, filename: str = "") -> dict:
+        """Runs audio quality and authenticity analysis (omitting spectrogram image payload)."""
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        async with httpx.AsyncClient() as client:
+            quality_res = await self._call_worker(client, QUALITY_WORKER_URL, file_path)
+
+        # Cleanup generated spectrogram image from disk if created by worker
+        if quality_res and "spectrogram_image_path" in quality_res:
+            spec_path = quality_res["spectrogram_image_path"]
+            if spec_path and os.path.exists(spec_path):
+                try:
+                    os.remove(spec_path)
+                except Exception:
+                    pass
+
+        container = quality_res.get("container", {
+            "codec": "UNKNOWN",
+            "stated_bitrate_kbps": 0,
+            "sample_rate_hz": 44100,
+            "bit_depth": 16,
+            "channels": 2
+        })
+        mastering = quality_res.get("mastering", {
+            "lufs": -70.0,
+            "peak_db": 0.0
+        })
+        authenticity = quality_res.get("authenticity", {
+            "cutoff_hz": 0,
+            "estimated_bitrate_kbps": "Unknown",
+            "verdict": "Unknown"
+        })
+
+        return {
+            "filename": filename or os.path.basename(file_path),
+            "container": container,
+            "mastering": mastering,
+            "authenticity": authenticity,
+        }
+
+    async def analyze_full(self, file_path: str, filename: str = "") -> dict:
+        """Runs full analysis across all 5 workers in parallel and formats for API response."""
+        res = await self.analyze_file_microservices(file_path, filename=filename)
+        quality_data = None
+        if res.get("quality"):
+            q = res["quality"]
+            # Cleanup spectrogram file if generated
+            if "spectrogram_image_path" in q and q["spectrogram_image_path"]:
+                spec_p = q["spectrogram_image_path"]
+                if os.path.exists(spec_p):
+                    try:
+                        os.remove(spec_p)
+                    except Exception:
+                        pass
+            quality_data = {
+                "container": q.get("container"),
+                "mastering": q.get("mastering"),
+                "authenticity": q.get("authenticity")
+            }
+
+        return {
+            "filename": res.get("filename"),
+            "bpm": res.get("bpm"),
+            "bpm_confidence": res.get("bpm_confidence"),
+            "key_standard": res.get("key_standard"),
+            "key_camelot": res.get("key_camelot"),
+            "key_confidence": res.get("key_confidence"),
+            "duration_seconds": res.get("duration", 0.0),
+            "chords": res.get("chords", []),
+            "quality": quality_data,
+            "segments": res.get("segments", [])
+        }
+
     async def process_file(self, filename: str) -> dict:
         """
         Process a single file immediately (Individual Analysis).

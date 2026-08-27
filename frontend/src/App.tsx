@@ -1,8 +1,11 @@
 import { useEffect, useState, useRef } from 'react';
 import { UploadZone } from './components/UploadZone';
 import { WaveformPlayer, WaveformPlayerHandle } from './components/WaveformPlayer';
+import { SongStructure } from './components/SongStructure';
+import { PitchTimeStretch } from './components/PitchTimeStretch';
 import { ChordProgression } from './components/ChordProgression';
 import { QualityAnalysis } from './components/QualityAnalysis';
+import { ServiceHealthBadge } from './components/ServiceHealthBadge';
 import { Library } from './components/Library';
 import { useAudioStore } from './store/useAudioStore';
 
@@ -57,7 +60,7 @@ function App() {
       <div className="max-w-7xl mx-auto space-y-8 w-full">
         
         {/* Top Header */}
-        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-900/60 p-6 rounded-2xl border border-slate-800 shadow-xl backdrop-blur-sm">
+        <header className="relative z-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-900/60 p-6 rounded-2xl border border-slate-800 shadow-xl backdrop-blur-sm">
           <div>
             <div className="flex items-center gap-3">
               <div className="w-11 h-11 flex-shrink-0 shadow-lg shadow-purple-500/20 rounded-xl overflow-hidden border border-slate-700/60">
@@ -83,17 +86,14 @@ function App() {
                 </h1>
                 <div className="text-slate-400 text-xs sm:text-sm mt-0.5 space-y-0.5 leading-snug">
                   <p>Multi-Engine Microservices • BeatNet BPM • MusicalKeyCNN Key • Madmom Chords</p>
-                  <p className="text-slate-500">• Laplacian Structure • WhatsMyBitrate Quality & Spectrograms • Mutagen ID3 Tagging</p>
+                  <p className="text-slate-500">• Rubber Band v4 Pitch & Stretch • Laplacian Structure • WhatsMyBitrate Quality • Mutagen ID3 Tagging</p>
                 </div>
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-3 flex-shrink-0">
-            <span className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-3.5 py-1.5 rounded-full font-medium flex items-center gap-1.5 whitespace-nowrap shadow-sm">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              Microservices Live
-            </span>
+            <ServiceHealthBadge />
           </div>
         </header>
 
@@ -340,7 +340,26 @@ function App() {
                   </div>
                 )}
 
-                {/* Chord Progression Interactive Section (Collapsible) */}
+                {/* Song Structure & Sections (Collapsible - Collapsed by Default) */}
+                {activeAnalysis && activeAnalysis.segments && activeAnalysis.segments.length > 0 && (
+                  <SongStructure
+                    segments={activeAnalysis.segments}
+                    onSeek={handleSeek}
+                    currentTime={currentPlaybackTime}
+                  />
+                )}
+
+                {/* Pitch Shifting & Time Stretching (Collapsible - Collapsed by Default) */}
+                {activeTitle && (
+                  <PitchTimeStretch
+                    filename={activeTitle}
+                    detectedBpm={activeAnalysis?.bpm}
+                    detectedKeyStandard={activeAnalysis?.key_standard}
+                    detectedKeyCamelot={activeAnalysis?.key_camelot}
+                  />
+                )}
+
+                {/* Chord Progression Interactive Section (Collapsible - Expanded by Default) */}
                 {activeAnalysis && activeAnalysis.chords && (
                   <ChordProgression
                     chords={activeAnalysis.chords}
@@ -349,7 +368,7 @@ function App() {
                   />
                 )}
 
-                {/* Audio Quality & Mastering Specs (Collapsible) */}
+                {/* Audio Quality & Mastering Specs (Collapsible - Expanded by Default) */}
                 {activeAnalysis && activeAnalysis.quality && (
                   <QualityAnalysis quality={activeAnalysis.quality} />
                 )}

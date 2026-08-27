@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.join(backend_dir, "workers", "key_worker"))
 sys.path.insert(0, os.path.join(backend_dir, "workers", "chord_worker"))
 sys.path.insert(0, os.path.join(backend_dir, "workers", "quality_worker"))
 sys.path.insert(0, os.path.join(backend_dir, "workers", "structure_worker"))
+sys.path.insert(0, os.path.join(backend_dir, "workers", "stretch_worker"))
 
 from metadata import write_audio_metadata, get_audio_duration
 from processor import BatchProcessor
@@ -28,6 +29,7 @@ import key_api
 import chord_api
 import quality_api
 import structure_api
+import stretch_api
 
 @pytest.fixture(scope="session")
 def synthetic_audio_file(tmp_path_factory):
@@ -226,3 +228,40 @@ async def test_concurrency_parallel_execution(tmp_path, synthetic_audio_file):
         assert result["quality"]["container"]["codec"] == "WAV"
         assert len(result["segments"]) == 2
         assert result["segments"][0]["label"] == "Intro"
+
+
+def test_stretch_worker_isolation(synthetic_audio_file):
+    """
+    Acceptance Criteria: Rubber Band Stretch Worker Isolation Test
+    Verify pitch shifting, tempo stretching, and target BPM calculations.
+    """
+    client = TestClient(stretch_api.app)
+
+    # 1. Health check & version
+    health_res = client.get("/health")
+    assert health_res.status_code == 200
+    assert health_res.json()["service"] == "stretch-worker"
+
+    version_res = client.get("/version")
+    assert version_res.status_code == 200
+    assert "Rubber Band" in version_res.json()["engine"]
+
+    # 2. Pitch shifting & tempo stretching request
+    req_payload = {
+        "file_path": synthetic_audio_file,
+        "pitch_semitones": 2.0,
+        "tempo_ratio": 1.25,
+        "original_bpm": 120.0,
+        "target_bpm": 150.0,
+        "preserve_formants": True,
+        "output_format": "wav"
+    }
+    response = client.post("/process", json=req_payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert "output_filename" in data
+    assert data["pitch_semitones"] == 2.0
+    assert data["tempo_ratio"] == 1.25
+    assert data["target_bpm"] == 150.0
+    assert os.path.exists(data["output_file_path"])

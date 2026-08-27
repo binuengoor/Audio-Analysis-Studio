@@ -20,42 +20,31 @@ A high-performance audio analysis dashboard powered by an asynchronous **multi-e
 ## Highlights & Features
 
 - **Multi-Engine Microservices Architecture:**
-  - **Tempo & BPM Detection:** [BeatNet](https://github.com/mjhydri/BeatNet) state-of-the-art DBN (Dynamic Bayesian Network) beat and downbeat tracking engine.
-  - **Key & Camelot Detection:** [MusicalKeyCNN](https://github.com/danielfriis/musical-key-cnn) deep neural network predicting both Camelot wheel notations (`12A`, `8B`, etc.) and Standard Key (`C# minor`, `F major`, etc.).
-  - **Chord Progression Recognition:** [Madmom](https://github.com/CPJKU/madmom) CNN + CRF (Conditional Random Field) chord segmentation and harmonic progression modeling.
-  - **Song Structural Segmentation Engine:** [Librosa](https://librosa.org/) & `scikit-learn` beat-synchronous CQT Chroma + MFCC Laplacian agglomerative segmentation detecting macro song sections (`Intro`, `Verse`, `Chorus`, `Bridge`, `Outro`).
-  - **Audio Quality & Bitrate Engine:** "WhatsMyBitrate"-style inspection via `flac-detective`, `pyloudnorm`, `soundfile`, and `mutagen` extracting:
-    - **Container Properties:** Codec (`FLAC`, `WAV`, `MP3`), bit depth (`16-bit`, `24-bit`, `32-bit`), sample rate (`44.1 kHz`, `48.0 kHz`), channels (`Stereo`/`Mono`), and stated bit rate.
-    - **Mastering Metrics:** Integrated **LUFS** loudness (evaluated against **-14.0 LUFS** streaming standard) and sample/true peak in **dBFS** (with **-1.0 dB** ceiling target).
-    - **Authenticity & Cutoff:** True frequency cutoff (Hz), transcode verdict (`GENUINE LOSSLESS`, `NEAR LOSSLESS`, `SUSPICIOUS`), and perceptual bitrate estimate (`64`, `128`, `192`, `320`, `Lossless`).
-    - **Linear Spectrogram Generation:** High-resolution linear-frequency spectrogram plots with red dashed cutoff line overlay.
-  - **Asynchronous Distributed Job Queue:** Redis broker + Celery worker daemon (`celery -A celery_tasks worker`) enabling non-blocking multi-file batch drops and live status polling.
+  - **Tempo & BPM Detection:** [BeatNet](https://github.com/mjhydri/BeatNet) state-of-the-art DBN (Dynamic Bayesian Network) beat and downbeat tracking engine (`bpm-worker:8001`).
+  - **Key & Camelot Detection:** [MusicalKeyCNN](https://github.com/danielfriis/musical-key-cnn) deep neural network predicting both Camelot wheel notations (`12A`, `8B`, etc.) and Standard Key (`C# minor`, `F major`, etc.) (`key-worker:8002`).
+  - **Chord Progression Recognition:** [Madmom](https://github.com/CPJKU/madmom) CNN + CRF (Conditional Random Field) chord segmentation and harmonic progression modeling (`chord-worker:8003`).
+  - **Song Structural Segmentation Engine:** [Librosa](https://librosa.org/) & `scikit-learn` beat-synchronous CQT Chroma + MFCC Laplacian agglomerative segmentation detecting macro song sections (`Intro`, `Verse`, `Chorus`, `Bridge`, `Outro`) (`structure-worker:8005`).
+  - **Audio Quality & Bitrate Engine:** "WhatsMyBitrate"-style inspection via `flac-detective`, `pyloudnorm`, `soundfile`, and `mutagen` extracting container properties, integrated LUFS loudness, true peak dBFS, cutoff frequency, and authenticity verdicts (`quality-worker:8004`).
+  - **Pitch Shifting & Time Stretching Engine:** [Rubber Band Library v4.0](https://breakfastquay.com/rubberband/) microservice (`stretch-worker:8007`) offering high-fidelity pitch transposition (±12 semitones / cents), tempo time-stretching (0.5x to 2.0x / target BPM), and vocal formant preservation.
+  - **Modular Audio-Only URL Downloader Engine:** [yt-dlp](https://github.com/yt-dlp/yt-dlp) + [FFmpeg](https://ffmpeg.org/) microservice (`downloader-worker:8006`) extracting highest-quality FLAC/MP3 streams from YouTube, SoundCloud, Bandcamp, and direct audio links.
+  - **Asynchronous Distributed Job Queue:** Redis broker + Celery worker daemon enabling non-blocking multi-file batch drops and live status polling.
   - **API Gateway:** Lightweight, high-throughput FastAPI gateway orchestrating parallel worker requests.
 
-- **WaveSurfer.js Regions & Song Structure Timeline:**
-  - **Waveform Regions:** Translucent color-coded section boundaries (`Intro`, `Verse`, `Chorus`, `Bridge`, `Outro`) painted directly onto the waveform.
-  - **Interactive Section Strip:** Clickable macro section pills with timestamp ranges and real-time active playback synchronization.
+- **Real-Time Microservices Health Status & Topology Inspector:**
+  - **Dynamic Status Badge:** Auto-polls `GET /api/health/services` every 30 seconds, showing `Microservices Live (8/8)` in green, `Partial Outage` in amber, or `Services Offline` in red.
+  - **Topology Popover:** Interactive popup displaying real-time operational state, port assignment, and round-trip HTTP response latency (in ms) for all 8 microservices and Redis.
 
-- **Interactive & Collapsible Chord Progression Viewer:**
-  - **Timeline View:** Horizontally scrollable timeline displaying timestamped chord blocks (`[0.0s - 1.3s] F#m`) with harmonic duration badges.
-  - **Harmonic Flow View:** Summarized harmonic journey (e.g. `F#m → G# → C#m → C#`).
-  - **Click-to-Seek Audio Sync:** Clicking any chord block jumps playback directly to that moment.
-  - **Live Playback Tracking:** The active chord lights up in real time during waveform audio preview.
-  - **Collapsible Section:** Toggle section visibility on demand.
+- **Uniform Collapsible Analysis Sections (Collapsed by Default):**
+  - **Song Structure & Sections:** Macro section pills with timestamp ranges, durations, and seek navigation.
+  - **Pitch Shifting & Time Stretching:** Pitch shift slider, tempo multiplier, formant preservation toggle, audio preview, and custom output filename pattern with direct export.
+  - **Chord Progression Viewer:** Interactive timeline with click-to-seek playback sync and harmonic flow journey.
+  - **Audio Quality & Mastering Specs:** Container codec, bit depth, sample rate, LUFS mastering evaluation, and linear spectrogram cutoff overlay.
 
 - **Automated ID3 Metadata Tagging:**
   - Embedded `TBPM` (BPM tempo) and `TKEY` (Camelot Key / Standard Key) tags are automatically written directly into the file headers using `mutagen` on analysis and export.
 
-- **Unified Single-Page Dashboard:**
-  - Ingestion drop-zone, real-time batch queueing, active track analysis, quality specs, spectrogram, and library management consolidated onto a single page.
-  - Clicking any track in the library instantly loads its analysis, waveform preview, chord progression, and spectrogram without triggering unnecessary re-analysis.
-  - Dedicated **"Re-analyze"** button to force re-processing on demand.
-
 - **Flexible Token-Based Renaming:**
-  - Default naming convention: `{OriginalName} - {Key} - {BPM}`.
-  - Presets for `{Camelot} - {BPM} - {OriginalName}` and `{BPM} - {Camelot} - {OriginalName}`.
-  - Interactive **"Available Tags"** tooltip with detailed token descriptions.
-  - Preserves musical notation symbols (`#`, etc.) in generated filenames.
+  - Standardized filename pattern generator for library downloads and transformed pitch-shifted files (`{OriginalName}`, `{Key}`, `{Camelot}`, `{BPM}`, `{Pitch}`, `{Tempo}`). Preserves musical notation symbols (`#`, etc.).
 
 - **Apple Silicon & Multi-Architecture Native Support:**
   - Fully optimized for ARM64 (Apple Silicon M1/M2/M3/M4) and AMD64 with OpenBLAS hardware acceleration and multi-threaded linear algebra.
@@ -75,7 +64,7 @@ A high-performance audio analysis dashboard powered by an asynchronous **multi-e
                                       │   API Gateway (FastAPI)  │
                                       │   http://localhost:8000   │
                                       └──────┬────────────┬──────┘
-                                             │            │ Enqueue Tasks
+                                             │            │ Enqueue Tasks / Download URL
                                              │            ▼
                                              │    ┌───────────────┐
                                              │    │     Redis     │
@@ -88,17 +77,17 @@ A high-performance audio analysis dashboard powered by an asynchronous **multi-e
                                              │    │  (Async Exec) │
                                              │    └───────┬───────┘
                                              │            │
-                                             ▼            ▼  (5-Way Parallel Execution)
- ┌─────────────────┬──────────────────┬───────────────────┼───────────────────┬─────────────────┐
- │                 │                  │                   │                   │                 │
- ▼                 ▼                  ▼                   ▼                   ▼                 ▼
-┌───────────────┐ ┌────────────────┐ ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│  BPM Worker   │ │   Key Worker   │ │  Chord Worker   │ │ Quality Worker  │ │Structure Worker │
-│   (BeatNet)   │ │(MusicalKeyCNN) │ │    (Madmom)     │ │(WhatsMyBitrate) │ │   (Laplacian)   │
-│  Port: 8001   │ │   Port: 8002   │ │   Port: 8003    │ │   Port: 8004    │ │   Port: 8005    │
-└───────┬───────┘ └────────┬───────┘ └────────┬────────┘ └────────┬────────┘ └────────┬────────┘
-        │                  │                  │                   │                   │
-        └──────────────────┴──────────────────┴───────────────────┴───────────────────┘
+                                             ▼            ▼  (Multi-Worker Execution)
+ ┌─────────────────┬──────────────────┬───────────────────┼───────────────────┬─────────────────┬─────────────────┬─────────────────┐
+ │                 │                  │                   │                   │                 │                 │                 │
+ ▼                 ▼                  ▼                   ▼                   ▼                 ▼                 ▼                 ▼
+┌───────────────┐ ┌────────────────┐ ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│  BPM Worker   │ │   Key Worker   │ │  Chord Worker   │ │ Quality Worker  │ │Structure Worker │ │Downloader Worker│ │ Stretch Worker  │
+│   (BeatNet)   │ │(MusicalKeyCNN) │ │    (Madmom)     │ │(WhatsMyBitrate) │ │   (Laplacian)   │ │ (yt-dlp/FFmpeg) │ │ (Rubber Band 4) │
+│  Port: 8001   │ │   Port: 8002   │ │   Port: 8003    │ │   Port: 8004    │ │   Port: 8005    │ │   Port: 8006    │ │   Port: 8007    │
+└───────┬───────┘ └────────┬───────┘ └────────┬────────┘ └────────┬────────┘ └────────┬────────┘ └────────┬────────┘ └────────┬────────┘
+        │                  │                  │                   │                   │                   │                   │
+        └──────────────────┴──────────────────┴───────────────────┴───────────────────┴───────────────────┴───────────────────┘
                                                   │
                                                   ▼
                                     ┌──────────────────────────┐
@@ -129,6 +118,8 @@ docker compose up -d
 * **Chord Worker:** [http://localhost:8003](http://localhost:8003)
 * **Quality Worker:** [http://localhost:8004](http://localhost:8004)
 * **Structure Worker:** [http://localhost:8005](http://localhost:8005)
+* **Downloader Worker:** [http://localhost:8006](http://localhost:8006)
+* **Stretch Worker (Rubber Band v4):** [http://localhost:8007](http://localhost:8007)
 * **Redis Broker:** `localhost:6379`
 
 To stop all services:
@@ -166,13 +157,69 @@ docker compose up -d
 
 ---
 
-## API Reference
+## Public REST API (`/api/v1`) & Authentication
+
+Audio Analysis Studio provides a high-throughput, headless REST API for third-party tools, DAWs, mobile apps, and batch analysis scripts.
+
+### Interactive Documentation
+Interactive OpenAPI (Swagger) documentation is available at:
+* **Swagger UI:** [http://localhost:8000/docs](http://localhost:8000/docs)
+* **ReDoc:** [http://localhost:8000/redoc](http://localhost:8000/redoc)
+
+### Interactive Swagger UI & OpenAPI Specs
+When the stack is running, explore and execute live API calls via interactive documentation:
+* **Interactive Swagger UI:** [http://localhost:8000/docs](http://localhost:8000/docs)
+* **ReDoc Documentation:** [http://localhost:8000/redoc](http://localhost:8000/redoc)
+* **OpenAPI 3.0 Schema:** [http://localhost:8000/openapi.json](http://localhost:8000/openapi.json)
+* **Complete Developer Guide & Examples:** 📖 [**`docs/API.md`**](docs/API.md)
+
+### Authentication (Optional & Cloud-Ready)
+* **Local Development (Default):** If `API_KEY` (or `API_KEYS`) is unset, authentication is disabled and all endpoints are open.
+* **Production / Cloud Deployment:** Set `API_KEY=your_secret_key` or `API_KEYS=key1,key2` in environment variables.
+* **Supported Headers:**
+  * `X-API-Key: your_secret_key`
+  * `Authorization: Bearer your_secret_key`
+
+### Public REST API Endpoints
+
+#### 1. Audio Stream Downloading (For Downstream Stems & Processing)
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/api/v1/download/stream` | **Stream Audio Binary:** Downloads highest-quality FLAC/MP3/WAV from URL and streams raw bytes directly to client with metadata headers (`X-Track-Title`, `X-Track-Duration`, etc.). Temp files auto-cleaned. |
+| `POST` | `/api/v1/download/info` | **Metadata Inspector:** Returns title, duration, uploader, and thumbnail from URL without downloading audio. |
+
+#### 2. Multi-Engine Analysis (`multipart/form-data` & URL)
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/api/v1/analyze/basic` | **Fast BPM & Key:** Returns BPM, Standard Key (`C major`), Camelot (`8B`), and duration |
+| `POST` | `/api/v1/analyze/key` | **Musical Key Only:** Returns Standard Key, Camelot notation, and confidence score |
+| `POST` | `/api/v1/analyze/bpm` | **BPM Tempo Only:** Returns tempo value and confidence score |
+| `POST` | `/api/v1/analyze/structure` | **Structural Sections:** Returns timestamped macro sections (`Intro`, `Verse`, `Chorus`) |
+| `POST` | `/api/v1/analyze/chords` | **Chord Progression:** Returns harmonic chord sequence with timestamps |
+| `POST` | `/api/v1/analyze/quality` | **Audio Quality & Authenticity:** Returns codec, LUFS, peak dBFS, and cutoff |
+| `POST` | `/api/v1/analyze/full` | **Comprehensive Analysis:** Runs all 5 engines in parallel on uploaded file |
+| `POST` | `/api/v1/analyze/basic/url` | **Fast BPM & Key from URL:** One-step stream download + BPM/Key analysis |
+| `POST` | `/api/v1/analyze/url` | **Full Analysis from URL:** One-step stream download + full 5-engine report |
+
+> 💡 For comprehensive code snippets in Python, JavaScript, and cURL for every endpoint, see [**`docs/API.md`**](docs/API.md).
+
+---
+
+## Internal Gateway & Library Endpoints
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
 | `GET` | `/` | Gateway health check |
+| `GET` | `/api/health/services` | Aggregate real-time health & latency of all 8 microservices & Redis |
 | `POST` | `/api/upload` | Upload audio file to shared ingestion storage |
-| `POST` | `/api/analyze` | Run 4-engine parallel analysis across all microservices |
+| `POST` | `/api/intake/url` | Download audio-only stream from URL (yt-dlp + FFmpeg) & auto-analyze |
+| `GET` | `/api/downloader/version` | Get active yt-dlp & FFmpeg versions and cookies status |
+| `POST` | `/api/downloader/update` | Live upgrade yt-dlp engine in-container without restart |
+| `POST` | `/api/stretch` | Pitch shift and tempo stretch audio via Rubber Band v4.0 |
+| `GET` | `/api/stretch/version` | Get active Rubber Band Library version |
+| `POST` | `/api/analyze` | Run 5-engine parallel analysis across all microservices |
+| `POST` | `/api/analyze/batch` | Enqueue batch analysis tasks to Celery/Redis queue |
+| `GET` | `/api/jobs/{job_id}` | Poll Celery job status and get analysis result |
 | `POST` | `/api/reanalyze` | Force re-analysis of an existing library audio file |
 | `POST` | `/api/queue` | Add a batch list of audio filenames to processing queue |
 | `GET` | `/api/status` | Get real-time batch processing progress |
@@ -202,6 +249,7 @@ Audio Analysis Studio is made possible thanks to the extraordinary open-source r
 - **[BeatNet](https://github.com/mjhydri/BeatNet)** *(Mojtaba Heydari et al.)* – State-of-the-art joint beat and downbeat tracking using Dynamic Bayesian Networks and CRNNs.
 - **[MusicalKeyCNN](https://github.com/danielfriis/musical-key-cnn)** *(Daniel Friis et al.)* – Deep Convolutional Neural Network for accurate musical key and Camelot wheel estimation.
 - **[Madmom](https://github.com/CPJKU/madmom)** *(Department of Computational Perception, JKU Linz)* – Robust Python audio and music processing library powering CNN + CRF chord recognition.
+- **[Rubber Band Library](https://breakfastquay.com/rubberband/)** *(Breakfast Quay / Chris Cannam)* – Gold-standard real-time and offline pitch shifting and time stretching audio engine.
 - **[FLAC Detective](https://github.com/aegis-technologies/flac-detective)** *(Aegis Technologies)* – Audio authenticity, frequency cutoff analysis, and fake lossless transcode detection.
 - **[PyLoudnorm](https://github.com/csteinmetz1/pyloudnorm)** *(Christian Steinmetz)* – ITU-R BS.1770-4 integrated loudness (LUFS) and true peak calculation.
 - **[Librosa](https://librosa.org/)** *(Brian McFee et al.)* – Feature extraction, STFT, and spectrogram generation.

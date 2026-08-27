@@ -88,3 +88,130 @@ class LibraryEntry(BaseModel):
     analysis: Optional[AnalysisResult] = None
     created_at: float
     status: str  # uploaded, pending, processing, completed, error
+
+
+# --- Public API (v1) Response Models ---
+
+class BasicAnalysisResponse(BaseModel):
+    filename: str
+    bpm: float
+    bpm_confidence: float
+    key_standard: str
+    key_camelot: str
+    key_confidence: float
+    duration_seconds: float
+
+
+class KeyAnalysisResponse(BaseModel):
+    filename: str
+    key_standard: str
+    key_camelot: str
+    key_confidence: float
+
+
+class BPMAnalysisResponse(BaseModel):
+    filename: str
+    bpm: float
+    bpm_confidence: float
+
+
+class StructureAnalysisResponse(BaseModel):
+    filename: str
+    duration_seconds: float
+    segments: List[SectionSegment]
+
+
+class ChordAnalysisResponse(BaseModel):
+    filename: str
+    duration_seconds: float
+    chords: List[ChordSegment]
+
+
+class QualityData(BaseModel):
+    container: ContainerInfo
+    mastering: MasteringInfo
+    authenticity: AuthenticityInfo
+
+
+class QualityAnalysisResponse(BaseModel):
+    filename: str
+    container: ContainerInfo
+    mastering: MasteringInfo
+    authenticity: AuthenticityInfo
+
+
+class FullAnalysisResponse(BaseModel):
+    filename: str
+    bpm: float
+    bpm_confidence: float
+    key_standard: str
+    key_camelot: str
+    key_confidence: float
+    duration_seconds: float
+    chords: List[ChordSegment] = []
+    quality: Optional[QualityData] = None
+    segments: List[SectionSegment] = []
+
+
+# --- URL Intake Models ---
+
+class UrlIntakeRequest(BaseModel):
+    url: str
+    audio_format: Optional[str] = "flac"
+    auto_analyze: bool = True
+
+
+class UrlIntakeResponse(BaseModel):
+    success: bool
+    entry: LibraryEntry
+    job_id: Optional[str] = None
+    title: str
+    duration: float = 0.0
+    thumbnail: Optional[str] = None
+    uploader: Optional[str] = None
+    filename: str
+
+
+class DownloaderVersionResponse(BaseModel):
+    ytdlp_version: str
+    ffmpeg_version: str
+    cookies_present: bool
+    cookies_path: str
+
+
+class DownloaderUpdateResponse(BaseModel):
+    success: bool
+    message: str
+    previous_version: str
+    new_version: str
+    output: Optional[str] = None
+
+
+# --- Rubber Band Pitch Shift & Time Stretch Models ---
+
+class StretchRequest(BaseModel):
+    filename: Optional[str] = None
+    file_path: Optional[str] = None
+    pitch_semitones: float = 0.0
+    tempo_ratio: float = 1.0
+    target_bpm: Optional[float] = None
+    original_bpm: Optional[float] = None
+    preserve_formants: bool = False
+    crispness: int = 5
+    output_format: Optional[str] = "wav"
+    output_filename: Optional[str] = None
+    add_to_library: bool = True
+
+
+class StretchResponse(BaseModel):
+    success: bool
+    output_filename: str
+    output_url: str
+    duration: float
+    pitch_semitones: float
+    tempo_ratio: float
+    target_bpm: Optional[float] = None
+    library_entry: Optional[LibraryEntry] = None
+    engine: str = "Rubber Band Library v4.0"
+
+

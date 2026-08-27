@@ -13,7 +13,8 @@ export const ChordProgression: React.FC<ChordProgressionProps> = ({
   currentTime = 0,
 }) => {
   const [viewMode, setViewMode] = useState<'timeline' | 'summary'>('timeline');
-  const [isExpanded, setIsExpanded] = useState(true);
+  // Collapsed by default
+  const [isExpanded, setIsExpanded] = useState(false);
 
   if (!chords || chords.length === 0) {
     return (
@@ -48,29 +49,40 @@ export const ChordProgression: React.FC<ChordProgressionProps> = ({
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-lg">
-      <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-xl">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-800 pb-3">
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="flex items-center gap-2 text-left group focus:outline-none"
+          className="flex items-center gap-2.5 text-left group focus:outline-none"
         >
-          <span className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-1.5 group-hover:text-purple-300 transition-colors">
-            <span className="w-2 h-2 rounded-full bg-purple-400"></span>
-            Chord Progression
-          </span>
-          <span className="text-xs text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">
-            {chords.length} segments
-          </span>
-          <svg
-            className={`w-4 h-4 text-slate-400 group-hover:text-white transition-transform duration-200 ${
-              isExpanded ? 'rotate-180' : ''
-            }`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
+          <div className="p-2 bg-purple-500/15 rounded-lg border border-purple-500/30 text-purple-300 group-hover:border-purple-400 transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+            </svg>
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider group-hover:text-purple-300 transition-colors">
+                Chord Progression
+              </h3>
+              <span className="text-xs text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full font-mono">
+                {chords.length} segments
+              </span>
+              <svg
+                className={`w-4 h-4 text-slate-400 group-hover:text-white transition-transform duration-200 ${
+                  isExpanded ? 'rotate-180' : ''
+                }`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Madmom CNN + CRF Deep Learning Engine
+            </p>
+          </div>
         </button>
 
         {isExpanded && (

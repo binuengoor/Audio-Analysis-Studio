@@ -17,6 +17,7 @@ interface AppState {
   selectTrack: (entry: LibraryEntry) => void;
   reanalyzeTrack: (filename: string) => Promise<void>;
   addAudioFiles: (files: File[]) => Promise<void>;
+  importAudioFromUrl: (url: string, audioFormat?: string) => Promise<void>;
   updateFileStatus: (id: string, status: AudioFile['status']) => void;
   pollBatchStatus: () => Promise<void>;
   processOutput: (filename: string, pattern: string, bpm: number, key: string, camelot: string) => Promise<void>;
@@ -213,6 +214,85 @@ export const useAudioStore = create<AppState>((set, get) => ({
     } catch (error) {
       console.error('Batch queue error:', error);
       set({ processing: false, isAnalyzing: false });
+    }
+  },
+
+  importAudioFromUrl: async (url: string, audioFormat: string = 'flac') => {
+    set({ processing: true, isAnalyzing: true, progress: 10 });
+    try {
+      const intakeRes = await fetch(buildBackendUrl('/api/intake/url'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url,
+          audio_format: audioFormat,
+          auto_analyze: true,
+        }),
+      });
+
+      if (!intakeRes.ok) {
+        let errMsg = 'Failed to intake audio from URL';
+        try {
+          const errData = await intakeRes.json();
+          errMsg = errData.detail || errMsg;
+        } catch {
+          // fallback
+        }
+        throw new Error(errMsg);
+      }
+
+      const intakeData = await intakeRes.json();
+      const entry: LibraryEntry = intakeData.entry;
+      const jobId: string | undefined = intakeData.job_id;
+
+      // Set preview / active state
+      const audioUrl = entry.input_path
+        ? buildBackendUrl(`/files/input/${encodeURIComponent(entry.input_path)}`)
+        : null;
+
+      set({
+        activeEntryId: entry.id,
+        activeTitle: entry.filename,
+        activeAudioUrl: audioUrl,
+        activeAnalysis: null,
+        progress: 40,
+      });
+
+      await get().fetchLibrary();
+
+      if (jobId) {
+        // Poll the Celery job until completion
+        const pollJob = setInterval(async () => {
+          try {
+            const jobRes = await fetch(buildBackendUrl(`/api/jobs/${jobId}`));
+            if (jobRes.ok) {
+              const jobData = await jobRes.json();
+              if (jobData.status === 'SUCCESS') {
+                clearInterval(pollJob);
+                const completedAnalysis: AnalysisResult = jobData.result;
+                if (get().activeTitle === completedAnalysis.filename) {
+                  set({ activeAnalysis: completedAnalysis });
+                }
+                set({ processing: false, isAnalyzing: false, progress: 100 });
+                await get().fetchLibrary();
+              } else if (jobData.status === 'FAILURE') {
+                clearInterval(pollJob);
+                set({ processing: false, isAnalyzing: false });
+                console.error(`Job ${jobId} failed:`, jobData.error);
+                await get().fetchLibrary();
+              }
+            }
+          } catch (e) {
+            console.error(`Error polling job ${jobId}`, e);
+          }
+        }, 2000);
+      } else {
+        set({ processing: false, isAnalyzing: false, progress: 100 });
+      }
+    } catch (error: any) {
+      console.error('URL intake failed:', error);
+      set({ processing: false, isAnalyzing: false });
+      throw error;
     }
   },
 

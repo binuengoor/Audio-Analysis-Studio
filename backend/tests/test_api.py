@@ -169,3 +169,79 @@ def test_generate_new_filename_rounding():
     # Test 125.0 -> 125
     name3 = generate_new_filename("Song.mp3", "{BPM} - {Camelot} - {OriginalName}", 125.0, "A minor", "8A")
     assert name3 == "125 - 8A - Song.mp3"
+
+
+@patch("httpx.AsyncClient.post")
+@patch("celery_tasks.analyze_audio_task.delay")
+def test_intake_from_url(mock_celery_delay, mock_post, clean_upload_dir):
+    # Mock celery delay
+    mock_task = MagicMock()
+    mock_task.id = "intake-job-777"
+    mock_celery_delay.return_value = mock_task
+
+    # Mock httpx response from downloader worker
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "success": True,
+        "filename": "Awesome Track [dQw4w9WgXcQ].flac",
+        "file_path": "/app/data/shared_audio/input/Awesome Track [dQw4w9WgXcQ].flac",
+        "title": "Awesome Track",
+        "uploader": "Artist Channel",
+        "duration": 213.0,
+        "thumbnail": "https://img.youtube.com/vi/dQw4w9WgXcQ/0.jpg",
+        "source_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "extractor": "youtube",
+        "audio_format": "flac",
+        "file_size_bytes": 1048576,
+    }
+    mock_post.return_value = mock_resp
+
+    res = client.post("/api/intake/url", json={"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "audio_format": "flac"})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert data["filename"] == "Awesome Track [dQw4w9WgXcQ].flac"
+    assert data["title"] == "Awesome Track"
+    assert data["job_id"] == "intake-job-777"
+    assert data["entry"]["filename"] == "Awesome Track [dQw4w9WgXcQ].flac"
+
+
+@patch("httpx.AsyncClient.post")
+def test_stretch_api(mock_post, clean_upload_dir):
+    filename = "test_track.wav"
+    with open(os.path.join(clean_upload_dir, filename), "wb") as f:
+        f.write(FAKE_AUDIO_CONTENT)
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "success": True,
+        "output_file_path": os.path.join(OUTPUT_DIR, "test_track_pitch+2.0st_speed1.25x.wav"),
+        "output_filename": "test_track_pitch+2.0st_speed1.25x.wav",
+        "duration": 150.0,
+        "pitch_semitones": 2.0,
+        "tempo_ratio": 1.25,
+        "target_bpm": 150.0,
+        "engine": "Rubber Band Library v4.0"
+    }
+    mock_post.return_value = mock_resp
+
+    res = client.post("/api/stretch", json={
+        "filename": filename,
+        "pitch_semitones": 2.0,
+        "tempo_ratio": 1.25,
+        "original_bpm": 120.0,
+        "target_bpm": 150.0,
+        "preserve_formants": True,
+        "output_format": "wav"
+    })
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert data["output_filename"] == "test_track_pitch+2.0st_speed1.25x.wav"
+    assert data["pitch_semitones"] == 2.0
+    assert data["tempo_ratio"] == 1.25
+    assert data["target_bpm"] == 150.0
+    assert "output_url" in data
+

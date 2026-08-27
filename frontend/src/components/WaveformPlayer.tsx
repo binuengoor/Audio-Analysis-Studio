@@ -154,13 +154,6 @@ export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerPro
     }
   };
 
-  const handleSectionClick = (start: number) => {
-    if (wavesurfer.current && isReady) {
-      wavesurfer.current.setTime(start);
-      wavesurfer.current.play();
-    }
-  };
-
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
     const s = Math.floor(secs % 60);
@@ -171,44 +164,6 @@ export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerPro
     <div className="w-full bg-slate-950 p-4 sm:p-5 rounded-2xl border border-slate-800 shadow-xl space-y-4">
       {/* Waveform Canvas */}
       <div ref={containerRef} className="w-full" />
-
-      {/* Structural Segmentation Pill Ribbon */}
-      {segments && segments.length > 0 && (
-        <div className="pt-2 border-t border-slate-900">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-pink-400"></span>
-              Song Structure / Sections ({segments.length})
-            </span>
-            <span className="text-[10px] text-slate-500">Click section to seek</span>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            {segments.map((seg, idx) => {
-              const isActive = currentTime >= seg.start && currentTime <= seg.end;
-              return (
-                <button
-                  key={idx}
-                  onClick={() => handleSectionClick(seg.start)}
-                  style={{
-                    backgroundColor: isActive ? seg.color.replace('0.20', '0.45').replace('0.25', '0.50') : seg.color,
-                  }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border flex items-center gap-2 ${
-                    isActive
-                      ? 'border-white/40 text-white ring-2 ring-purple-500/50 shadow-md shadow-purple-500/20 scale-105'
-                      : 'border-white/10 text-slate-300 hover:text-white hover:border-white/30'
-                  }`}
-                >
-                  <span>{seg.label}</span>
-                  <span className="text-[10px] font-mono text-slate-400 font-normal">
-                    {formatTime(seg.start)} - {formatTime(seg.end)}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {/* Player Controls Bar */}
       <div className="flex items-center justify-between pt-1 border-t border-slate-900">
