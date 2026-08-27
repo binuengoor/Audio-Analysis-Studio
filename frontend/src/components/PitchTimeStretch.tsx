@@ -1,53 +1,13 @@
 import React, { useState, useRef } from 'react';
 import { buildBackendUrl } from '../config';
 import { useAudioStore } from '../store/useAudioStore';
+import { transposeKey } from '../utils/musicTheory';
 
 interface PitchTimeStretchProps {
   filename?: string;
   detectedBpm?: number;
   detectedKeyStandard?: string;
   detectedKeyCamelot?: string;
-}
-
-// Chromatic notes and key calculation utilities
-const NOTES_SHARP = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-const CAMELOT_MAJOR = ['8B', '3B', '10B', '5B', '12B', '7B', '2B', '9B', '4B', '11B', '6B', '1B'];
-const CAMELOT_MINOR = ['8A', '3A', '10A', '5A', '12A', '7A', '2A', '9A', '4A', '11A', '6A', '1A'];
-
-function transposeKey(keyStandard?: string, semitones: number = 0): { key: string; camelot: string } | null {
-  if (!keyStandard || semitones === 0) return null;
-
-  const isMinor = keyStandard.toLowerCase().includes('minor') || keyStandard.endsWith('m');
-  const cleanNote = keyStandard
-    .replace(/minor/i, '')
-    .replace(/major/i, '')
-    .replace('m', '')
-    .trim();
-
-  const flatMap: Record<string, string> = {
-    Db: 'C#',
-    Eb: 'D#',
-    Gb: 'F#',
-    Ab: 'G#',
-    Bb: 'A#',
-  };
-  const normalizedNote = flatMap[cleanNote] || cleanNote;
-  const idx = NOTES_SHARP.indexOf(normalizedNote);
-  if (idx === -1) return null;
-
-  const newIdx = (idx + semitones + 120) % 12;
-  const newNote = NOTES_SHARP[newIdx];
-  const newKeyStandard = `${newNote} ${isMinor ? 'minor' : 'major'}`;
-
-  let camelot = '';
-  if (isMinor) {
-    const minorOffset = (newIdx - 9 + 12) % 12;
-    camelot = CAMELOT_MINOR[minorOffset];
-  } else {
-    camelot = CAMELOT_MAJOR[newIdx];
-  }
-
-  return { key: newKeyStandard, camelot };
 }
 
 export const PitchTimeStretch: React.FC<PitchTimeStretchProps> = ({
@@ -80,9 +40,9 @@ export const PitchTimeStretch: React.FC<PitchTimeStretchProps> = ({
   const [playerDuration, setPlayerDuration] = useState<number>(0);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const { fetchLibrary } = useAudioStore();
+  const { fetchLibrary, showToast } = useAudioStore();
 
-  const shiftedKey = transposeKey(detectedKeyStandard, pitchSemitones);
+  const shiftedKey = detectedKeyStandard ? transposeKey(detectedKeyStandard, pitchSemitones) : null;
   const currentTargetBpm = detectedBpm ? Math.round(detectedBpm * tempoRatio * 10) / 10 : 0;
 
   // Handle tempo slider change
@@ -105,7 +65,7 @@ export const PitchTimeStretch: React.FC<PitchTimeStretchProps> = ({
 
   // Compute live output filename from pattern
   const origBase = filename ? filename.replace(/\.[^/.]+$/, '') : 'track';
-  const effKey = shiftedKey ? shiftedKey.key : (detectedKeyStandard || 'C major');
+  const effKey = shiftedKey ? shiftedKey.standard : (detectedKeyStandard || 'C major');
   const effCamelot = shiftedKey ? shiftedKey.camelot : (detectedKeyCamelot || '8B');
   const effBpm = currentTargetBpm || detectedBpm || 120;
   const pitchTag = pitchSemitones >= 0 ? `+${pitchSemitones}st` : `${pitchSemitones}st`;
@@ -166,9 +126,11 @@ export const PitchTimeStretch: React.FC<PitchTimeStretchProps> = ({
 
       // Refresh library database
       await fetchLibrary();
-    } catch (err: any) {
-      console.error('Stretch processing failed:', err);
-      alert(`Transformation failed: ${err.message || err}`);
+      showToast(`Rubber Band processing complete: ${data.output_filename}`, 'success');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('Stretch processing failed:', msg);
+      showToast(`Transformation failed: ${msg}`, 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -306,7 +268,7 @@ export const PitchTimeStretch: React.FC<PitchTimeStretchProps> = ({
                 <span className="text-slate-400">Estimated Shifted Key:</span>
                 {shiftedKey ? (
                   <span className="font-bold text-emerald-300 bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded">
-                    {shiftedKey.key} ({shiftedKey.camelot})
+                    {shiftedKey.standard} ({shiftedKey.camelot})
                   </span>
                 ) : (
                   <span className="text-slate-400 font-medium font-mono">

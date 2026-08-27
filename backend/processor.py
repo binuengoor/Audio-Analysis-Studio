@@ -4,12 +4,14 @@ from typing import List, Optional, Dict, Any
 import httpx
 from metadata import write_audio_metadata, get_audio_duration
 from models import AnalysisResult, ChordSegment, SectionSegment
-
-BPM_WORKER_URL = os.getenv("BPM_WORKER_URL", "http://bpm-worker:8001/analyze")
-KEY_WORKER_URL = os.getenv("KEY_WORKER_URL", "http://key-worker:8002/analyze")
-CHORD_WORKER_URL = os.getenv("CHORD_WORKER_URL", "http://chord-worker:8003/analyze")
-QUALITY_WORKER_URL = os.getenv("QUALITY_WORKER_URL", "http://quality-worker:8004/analyze")
-STRUCTURE_WORKER_URL = os.getenv("STRUCTURE_WORKER_URL", "http://structure-worker:8005/analyze")
+from config import (
+    BPM_WORKER_URL,
+    KEY_WORKER_URL,
+    CHORD_WORKER_URL,
+    QUALITY_WORKER_URL,
+    STRUCTURE_WORKER_URL,
+    logger,
+)
 
 class BatchProcessor:
     def __init__(self, upload_dir: str):
@@ -24,13 +26,15 @@ class BatchProcessor:
 
     async def _call_worker(self, client: httpx.AsyncClient, worker_url: str, file_path: str) -> Dict[str, Any]:
         """Send asynchronous HTTP POST request with absolute file_path to worker."""
+        # Ensure /analyze endpoint is targeted
+        endpoint = worker_url if worker_url.endswith("/analyze") else f"{worker_url}/analyze"
         payload = {"file_path": file_path}
         try:
-            response = await client.post(worker_url, json=payload, timeout=180.0)
+            response = await client.post(endpoint, json=payload, timeout=180.0)
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            print(f"Error calling worker at {worker_url}: {e}")
+            logger.warning("Error calling worker at %s for file %s: %s", endpoint, file_path, e)
             return {}
 
     async def analyze_file_microservices(self, file_path: str, filename: str = "") -> dict:
@@ -358,9 +362,9 @@ class BatchProcessor:
                     result = await self.analyze_file_microservices(file_path, filename=filename)
                     self.results[filename] = AnalysisResult(**result)
                     self.processed_count += 1
-                    print(f"Processed {filename}")
+                    logger.info("Processed %s in background queue", filename)
                 except Exception as e:
-                    print(f"Error processing {filename}: {e}")
+                    logger.error("Error processing %s in background queue: %s", filename, e, exc_info=True)
                 finally:
                     self.current_file = None
 

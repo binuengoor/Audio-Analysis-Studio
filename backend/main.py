@@ -8,6 +8,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import httpx
 from celery.result import AsyncResult
+
+from config import (
+    SHARED_DATA_DIR,
+    DATA_DIR,
+    INPUT_DIR,
+    OUTPUT_DIR,
+    BPM_WORKER_URL,
+    KEY_WORKER_URL,
+    CHORD_WORKER_URL,
+    QUALITY_WORKER_URL,
+    STRUCTURE_WORKER_URL,
+    DOWNLOADER_URL,
+    STRETCH_WORKER_URL,
+    REDIS_URL,
+    ALLOWED_ORIGINS,
+    logger,
+)
+from utils import sanitize_filename
 from models import (
     AnalysisResult,
     AnalyzeRequest,
@@ -77,34 +95,14 @@ X-API-Key: your_secret_api_key
     openapi_url="/openapi.json"
 )
 
-# Setup CORS
+# Setup CORS with configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True if ALLOWED_ORIGINS != ["*"] else False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Directories & Downloader Service Config
-DEFAULT_DATA_DIR = "/app/data/shared_audio" if os.path.exists("/app") else os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
-SHARED_DATA_DIR = os.getenv("SHARED_DATA_DIR", DEFAULT_DATA_DIR)
-DATA_DIR = SHARED_DATA_DIR
-INPUT_DIR = os.path.join(SHARED_DATA_DIR, "input")
-OUTPUT_DIR = os.path.join(SHARED_DATA_DIR, "output")
-
-# Microservice URLs
-BPM_WORKER_URL = os.getenv("BPM_WORKER_URL", "http://bpm-worker:8001")
-KEY_WORKER_URL = os.getenv("KEY_WORKER_URL", "http://key-worker:8002")
-CHORD_WORKER_URL = os.getenv("CHORD_WORKER_URL", "http://chord-worker:8003")
-QUALITY_WORKER_URL = os.getenv("QUALITY_WORKER_URL", "http://quality-worker:8004")
-STRUCTURE_WORKER_URL = os.getenv("STRUCTURE_WORKER_URL", "http://structure-worker:8005")
-DOWNLOADER_URL = os.getenv("DOWNLOADER_URL", "http://downloader-worker:8006")
-STRETCH_WORKER_URL = os.getenv("STRETCH_WORKER_URL", "http://stretch-worker:8007")
-REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
-
-os.makedirs(INPUT_DIR, exist_ok=True)
-os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # Mount static files for audio preview streaming and spectrogram viewing
 app.mount("/files/input", StaticFiles(directory=INPUT_DIR), name="input_files")
@@ -255,26 +253,32 @@ async def intake_audio_url(request: UrlIntakeRequest):
 
             dl_data = resp.json()
     except httpx.RequestError as e:
+        logger.error("Downloader microservice unreachable during URL intake: %s", e)
         raise HTTPException(
             status_code=503,
             detail=f"Downloader microservice unreachable at {DOWNLOADER_URL}: {str(e)}"
         )
 
-    filename = dl_data["filename"]
+    filename = sanitize_filename(dl_data["filename"])
 
-    # Create or update library entry
+    # Create or update library entry in SQLite
     entry = library.get_entry_by_filename(filename)
     if not entry:
         entry = library.add_entry(filename)
     else:
         entry.input_path = filename
         entry.status = "uploaded"
-        library.save()
+        # Persist updated status
+        with library._get_connection() as conn:
+            conn.execute("UPDATE library SET input_path = ?, status = 'uploaded' WHERE id = ?;", (filename, entry.id))
+            conn.commit()
 
     job_id = None
     if request.auto_analyze:
+        with library._get_connection() as conn:
+            conn.execute("UPDATE library SET status = 'processing' WHERE id = ?;", (entry.id,))
+            conn.commit()
         entry.status = "processing"
-        library.save()
         task = analyze_audio_task.delay(filename)
         job_id = task.id
 
@@ -332,7 +336,8 @@ async def stretch_audio(request: StretchRequest):
     to an audio file using the Rubber Band Library v4.0 microservice.
     """
     file_path = request.file_path
-    filename = request.filename
+    raw_filename = request.filename
+    filename = sanitize_filename(raw_filename) if raw_filename else None
 
     if not file_path and filename:
         candidate = os.path.join(INPUT_DIR, filename)
@@ -365,7 +370,7 @@ async def stretch_audio(request: StretchRequest):
                 "preserve_formants": request.preserve_formants,
                 "crispness": request.crispness,
                 "output_format": request.output_format or "wav",
-                "output_filename": request.output_filename,
+                "output_filename": sanitize_filename(request.output_filename) if request.output_filename else None,
             }
             resp = await client.post(f"{STRETCH_WORKER_URL}/process", json=payload)
             if resp.status_code != 200:
@@ -377,21 +382,22 @@ async def stretch_audio(request: StretchRequest):
 
             data = resp.json()
     except httpx.RequestError as e:
+        logger.error("Stretch worker request error: %s", e)
         raise HTTPException(
             status_code=503,
             detail=f"Rubber Band stretch microservice unreachable at {STRETCH_WORKER_URL}: {str(e)}"
         )
 
-    out_name = data["output_filename"]
+    out_name = sanitize_filename(data["output_filename"])
     entry = None
     if request.add_to_library:
         entry = library.get_entry_by_filename(out_name)
         if not entry:
             entry = library.add_entry(out_name)
         if entry:
-            entry.output_path = out_name
-            entry.status = "completed"
-            library.save()
+            library.set_output(entry.id, out_name)
+            # Re-fetch with output set
+            entry = library.get_entry(entry.id)
 
     return StretchResponse(
         success=True,
@@ -408,24 +414,30 @@ async def stretch_audio(request: StretchRequest):
 @app.post("/api/upload", response_model=LibraryEntry, tags=["Studio Library & Processing"])
 async def upload_audio(file: UploadFile = File(...)):
     try:
-        file_path = os.path.join(INPUT_DIR, file.filename)
+        raw_name = file.filename or "upload.wav"
+        safe_filename = sanitize_filename(raw_name, fallback="upload.wav")
+        file_path = os.path.join(INPUT_DIR, safe_filename)
+
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
         file_size = os.path.getsize(file_path)
-        print(f"Saved file size: {file_size} bytes")
+        logger.info("Saved upload %s (%d bytes)", safe_filename, file_size)
 
-        # Create or retrieve existing library entry
-        entry = library.get_entry_by_filename(file.filename)
+        # Create or retrieve existing library entry in SQLite
+        entry = library.get_entry_by_filename(safe_filename)
         if not entry:
-            entry = library.add_entry(file.filename)
+            entry = library.add_entry(safe_filename)
         else:
-            entry.input_path = file.filename
+            entry.input_path = safe_filename
             entry.status = "uploaded"
-            library.save()
+            with library._get_connection() as conn:
+                conn.execute("UPDATE library SET input_path = ?, status = 'uploaded' WHERE id = ?;", (safe_filename, entry.id))
+                conn.commit()
             
         return entry
     except Exception as e:
+        logger.error("Upload error: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/analyze", response_model=AnalysisResult, tags=["Studio Library & Processing"])
@@ -437,6 +449,8 @@ async def analyze_audio(request: AnalyzeRequest):
     if not filename:
         raise HTTPException(status_code=400, detail="Either filename or file_path must be provided")
 
+    filename = sanitize_filename(filename)
+
     try:
         entry = library.get_entry_by_filename(filename)
         if not entry:
@@ -444,7 +458,7 @@ async def analyze_audio(request: AnalyzeRequest):
 
         result = await processor.process_file(filename)
         
-        # Update library
+        # Update SQLite database
         if entry:
             library.update_analysis(entry.id, AnalysisResult(**result))
             
@@ -452,6 +466,7 @@ async def analyze_audio(request: AnalyzeRequest):
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="File not found")
     except Exception as e:
+        logger.error("Analyze error for %s: %s", filename, e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/analyze/batch", response_model=BatchAnalyzeResponse, tags=["Studio Library & Processing"])
@@ -461,13 +476,15 @@ async def analyze_batch(request: BatchAnalyzeRequest):
     Returns a list of job_ids.
     """
     job_ids = []
-    for filename in request.filenames:
+    for raw_name in request.filenames:
+        filename = sanitize_filename(raw_name)
         entry = library.get_entry_by_filename(filename)
         if not entry:
             entry = library.add_entry(filename)
         if entry:
-            entry.status = "processing"
-            library.save()
+            with library._get_connection() as conn:
+                conn.execute("UPDATE library SET status = 'processing' WHERE id = ?;", (entry.id,))
+                conn.commit()
 
         task = analyze_audio_task.delay(filename)
         job_ids.append(task.id)
@@ -493,14 +510,11 @@ async def get_job_status(job_id: str):
     else:
         return JobStatusResponse(job_id=job_id, status="PENDING")
 
-@app.post("/api/reanalyze", response_model=AnalysisResult, tags=["Studio Library & Processing"])
-async def reanalyze_audio(request: AnalyzeRequest):
-    return await analyze_audio(request)
-
 @app.post("/api/queue", tags=["Studio Library & Processing"])
 async def add_to_queue(request: QueueRequest):
-    await processor.add_to_queue(request.filenames)
-    return {"message": f"Added {len(request.filenames)} files to queue"}
+    safe_names = [sanitize_filename(name) for name in request.filenames]
+    await processor.add_to_queue(safe_names)
+    return {"message": f"Added {len(safe_names)} files to queue"}
 
 @app.get("/api/status", response_model=QueueStatus, tags=["Studio Library & Processing"])
 async def get_status():
@@ -514,7 +528,9 @@ async def get_status():
 
 @app.post("/api/process", tags=["Studio Library & Processing"])
 async def process_output(request: RenameRequest):
-    entry = library.get_entry_by_filename(request.filename)
+    raw_name = request.filename
+    filename = sanitize_filename(raw_name)
+    entry = library.get_entry_by_filename(filename)
     if not entry or not entry.input_path:
         raise HTTPException(status_code=404, detail="Input file not found in library")
 
@@ -529,10 +545,12 @@ async def process_output(request: RenameRequest):
         request.key,
         request.camelot
     )
+    new_name = sanitize_filename(new_name)
     dest_path = os.path.join(OUTPUT_DIR, new_name)
 
     shutil.copy2(source_path, dest_path)
     library.set_output(entry.id, new_name)
+    entry = library.get_entry(entry.id)
 
     return {
         "message": "File processed and renamed successfully",
@@ -546,19 +564,21 @@ def get_library():
 
 @app.get("/api/download/input/{filename}", tags=["Studio Library & Processing"])
 def download_input(filename: str):
-    file_path = os.path.join(INPUT_DIR, filename)
+    safe_filename = sanitize_filename(filename)
+    file_path = os.path.join(INPUT_DIR, safe_filename)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
     from fastapi.responses import FileResponse
-    return FileResponse(file_path, filename=filename)
+    return FileResponse(file_path, filename=safe_filename)
 
 @app.get("/api/download/output/{filename}", tags=["Studio Library & Processing"])
 def download_output(filename: str):
-    file_path = os.path.join(OUTPUT_DIR, filename)
+    safe_filename = sanitize_filename(filename)
+    file_path = os.path.join(OUTPUT_DIR, safe_filename)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
     from fastapi.responses import FileResponse
-    return FileResponse(file_path, filename=filename)
+    return FileResponse(file_path, filename=safe_filename)
 
 @app.delete("/api/library/{id}/input", tags=["Studio Library & Processing"])
 def delete_input_file(id: str):
@@ -602,8 +622,7 @@ def delete_entry(id: str):
         if os.path.exists(p):
             os.remove(p)
             
-    library.delete_input(id)
-    library.delete_output(id)
+    library.delete_entry(id)
     return {"message": "Entry and files deleted successfully"}
 
 @app.delete("/api/library", tags=["Studio Library & Processing"])
@@ -618,7 +637,8 @@ def clear_library():
         if os.path.isfile(p) and not f.startswith("."):
             os.remove(p)
             
-    library.entries = []
-    library.save()
-    return {"message": "Library cleared completely"}
+    with library._get_connection() as conn:
+        conn.execute("DELETE FROM library;")
+        conn.commit()
 
+    return {"message": "Library cleared completely"}

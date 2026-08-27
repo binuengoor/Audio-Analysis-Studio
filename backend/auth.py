@@ -1,8 +1,8 @@
-import os
 import secrets
 from typing import Optional, Set
 from fastapi import HTTPException, Security, status
 from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
+from config import get_configured_api_keys
 
 # Security schemes for OpenAPI / Swagger UI integration
 api_key_header_scheme = APIKeyHeader(
@@ -16,29 +16,9 @@ http_bearer_scheme = HTTPBearer(
     description="API Key via Authorization: Bearer <key> header"
 )
 
-
-def get_configured_api_keys() -> Set[str]:
-    """
-    Retrieves all valid API keys configured via API_KEY and/or API_KEYS environment variables.
-    """
-    keys = set()
-    single_key = os.getenv("API_KEY", "").strip()
-    if single_key:
-        keys.add(single_key)
-    
-    multiple_keys = os.getenv("API_KEYS", "").strip()
-    if multiple_keys:
-        for k in multiple_keys.split(","):
-            cleaned = k.strip()
-            if cleaned:
-                keys.add(cleaned)
-    return keys
-
-
 def is_auth_enabled() -> bool:
     """Returns True if at least one API key is configured in the environment."""
     return len(get_configured_api_keys()) > 0
-
 
 async def verify_api_key(
     api_key_header: Optional[str] = Security(api_key_header_scheme),

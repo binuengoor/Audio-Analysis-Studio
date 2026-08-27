@@ -6,6 +6,7 @@ from mutagen.mp4 import MP4
 from mutagen.oggvorbis import OggVorbis
 from mutagen.wave import WAVE
 from mutagen.aiff import AIFF
+from config import logger
 
 def get_audio_duration(file_path: str) -> float:
     """
@@ -16,7 +17,7 @@ def get_audio_duration(file_path: str) -> float:
         if audio is not None and audio.info is not None:
             return round(float(audio.info.length), 2)
     except Exception as e:
-        print(f"Warning: Could not get duration via mutagen for {file_path}: {e}")
+        logger.warning("Could not get duration via mutagen for %s: %s", file_path, e)
     return 0.0
 
 def write_audio_metadata(file_path: str, bpm: float, key_camelot: str, key_standard: str = "") -> bool:
@@ -25,6 +26,7 @@ def write_audio_metadata(file_path: str, bpm: float, key_camelot: str, key_stand
     Supports MP3, FLAC, M4A, OGG, WAV, and AIFF.
     """
     if not os.path.exists(file_path):
+        logger.warning("Attempted to write metadata to non-existent file: %s", file_path)
         return False
 
     bpm_str = str(int(round(bpm))) if bpm else ""
@@ -94,7 +96,7 @@ def write_audio_metadata(file_path: str, bpm: float, key_camelot: str, key_stand
                 audio.save()
                 return True
             except Exception as wav_err:
-                print(f"Warning: WAV ID3 tagging fallback: {wav_err}")
+                logger.warning("WAV ID3 tagging fallback error for %s: %s", file_path, wav_err)
                 return False
 
         elif ext in [".aif", ".aiff"]:
@@ -122,7 +124,7 @@ def write_audio_metadata(file_path: str, bpm: float, key_camelot: str, key_stand
                 return True
 
     except Exception as e:
-        print(f"Warning: Failed to write metadata to {file_path}: {e}")
+        logger.error("Failed to write metadata to %s: %s", file_path, e, exc_info=True)
     return False
 
 def generate_new_filename(original_filename: str, pattern: str, bpm: float, key: str, camelot: str) -> str:

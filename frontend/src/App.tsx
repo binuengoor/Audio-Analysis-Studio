@@ -7,6 +7,7 @@ import { ChordProgression } from './components/ChordProgression';
 import { QualityAnalysis } from './components/QualityAnalysis';
 import { ServiceHealthBadge } from './components/ServiceHealthBadge';
 import { Library } from './components/Library';
+import { ToastContainer } from './components/Toast';
 import { useAudioStore } from './store/useAudioStore';
 
 function App() {
@@ -415,6 +416,7 @@ function App() {
           </div>
         </footer>
 
+        <ToastContainer />
       </div>
     </div>
   );

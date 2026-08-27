@@ -41,6 +41,9 @@ data/output/*
 !data/output/.gitkeep
 data/shared_audio/
 data/library.json
+data/*.db
+data/*.db-wal
+data/*.db-shm
 data/*.png
 data/*.wav
 data/*.mp3

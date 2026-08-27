@@ -3,11 +3,12 @@ import asyncio
 from celery import Celery
 from processor import BatchProcessor
 from library import LibraryManager
-
-REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
-DEFAULT_DATA_DIR = "/app/data/shared_audio" if os.path.exists("/app") else os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
-SHARED_DATA_DIR = os.getenv("SHARED_DATA_DIR", DEFAULT_DATA_DIR)
-INPUT_DIR = os.path.join(SHARED_DATA_DIR, "input")
+from config import (
+    REDIS_URL,
+    SHARED_DATA_DIR,
+    INPUT_DIR,
+    logger,
+)
 
 celery_app = Celery(
     "audio_tasks",
@@ -37,13 +38,14 @@ def analyze_audio_task(self, filename: str, file_path: str = ""):
 
     target_path = file_path or os.path.join(INPUT_DIR, filename)
     if not os.path.exists(target_path):
-        # Search recursively
+        # Search recursively in input directory
         for root, _, files in os.walk(INPUT_DIR):
             if filename in files:
                 target_path = os.path.join(root, filename)
                 break
 
     if not os.path.exists(target_path):
+        logger.error("Celery task failed: File not found on shared volume: %s", target_path)
         raise FileNotFoundError(f"File not found on shared volume: {target_path}")
 
     loop = asyncio.new_event_loop()
@@ -53,7 +55,7 @@ def analyze_audio_task(self, filename: str, file_path: str = ""):
             processor.analyze_file_microservices(target_path, filename=filename)
         )
 
-        # Update library database
+        # Update SQLite library database
         entry = library.get_entry_by_filename(filename)
         if not entry:
             entry = library.add_entry(filename)
@@ -61,6 +63,7 @@ def analyze_audio_task(self, filename: str, file_path: str = ""):
             from models import AnalysisResult
             library.update_analysis(entry.id, AnalysisResult(**result))
 
+        logger.info("Celery task completed analysis for %s", filename)
         return result
     finally:
         loop.close()

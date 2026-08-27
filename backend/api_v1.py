@@ -1,6 +1,7 @@
 import os
 import uuid
 import shutil
+import urllib.parse
 from typing import Optional
 import httpx
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, status, Request, BackgroundTasks
@@ -8,6 +9,15 @@ from fastapi.responses import FileResponse
 
 from auth import verify_api_key
 from processor import BatchProcessor
+from utils import sanitize_filename
+from config import (
+    SHARED_DATA_DIR,
+    INPUT_DIR,
+    MAX_FILE_SIZE_MB,
+    DOWNLOADER_URL,
+    STRETCH_WORKER_URL,
+    logger,
+)
 from models import (
     BasicAnalysisResponse,
     BPMAnalysisResponse,
@@ -25,13 +35,7 @@ router = APIRouter(
     dependencies=[Depends(verify_api_key)]
 )
 
-DEFAULT_DATA_DIR = "/app/data/shared_audio" if os.path.exists("/app") else os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
-SHARED_DATA_DIR = os.getenv("SHARED_DATA_DIR", DEFAULT_DATA_DIR)
-INPUT_DIR = os.path.join(SHARED_DATA_DIR, "input")
-MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "100"))
-
 _default_processor: Optional[BatchProcessor] = None
-
 
 def get_processor() -> BatchProcessor:
     global _default_processor
@@ -39,19 +43,20 @@ def get_processor() -> BatchProcessor:
         _default_processor = BatchProcessor(INPUT_DIR)
     return _default_processor
 
-
 def set_processor(proc: BatchProcessor):
     global _default_processor
     _default_processor = proc
 
-
 async def _save_temp_upload(file: UploadFile) -> tuple[str, str]:
     """
     Saves uploaded file to a temporary location in INPUT_DIR so microservices can access it.
-    Returns (temp_file_path, original_filename).
+    Sanitizes filenames to eliminate directory traversal risks.
+    Returns (temp_file_path, sanitized_original_filename).
     """
     os.makedirs(INPUT_DIR, exist_ok=True)
-    orig_name = file.filename or "upload.wav"
+    raw_name = file.filename or "upload.wav"
+    orig_name = sanitize_filename(raw_name, fallback="upload.wav")
+    
     _, ext = os.path.splitext(orig_name)
     temp_filename = f"api_temp_{uuid.uuid4().hex[:8]}_{orig_name}"
     temp_path = os.path.join(INPUT_DIR, temp_filename)
@@ -77,8 +82,8 @@ async def _save_temp_upload(file: UploadFile) -> tuple[str, str]:
                 os.remove(temp_path)
             except Exception:
                 pass
+        logger.error("Failed to process temp upload %s: %s", raw_name, e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to process upload: {str(e)}")
-
 
 def _cleanup_temp_file(temp_path: str):
     """Safely cleans up temporary uploaded audio files and any worker artifact."""
@@ -96,7 +101,6 @@ def _cleanup_temp_file(temp_path: str):
             os.remove(spec_path)
         except Exception:
             pass
-
 
 @router.post(
     "/analyze/basic",
@@ -116,7 +120,6 @@ async def analyze_basic(
     finally:
         _cleanup_temp_file(temp_path)
 
-
 @router.post(
     "/analyze/bpm",
     tags=["Audio Analysis (API v1)"],
@@ -134,7 +137,6 @@ async def analyze_bpm(
         return BPMAnalysisResponse(**result)
     finally:
         _cleanup_temp_file(temp_path)
-
 
 @router.post(
     "/analyze/key",
@@ -154,7 +156,6 @@ async def analyze_key(
     finally:
         _cleanup_temp_file(temp_path)
 
-
 @router.post(
     "/analyze/structure",
     tags=["Audio Analysis (API v1)"],
@@ -172,7 +173,6 @@ async def analyze_structure(
         return StructureAnalysisResponse(**result)
     finally:
         _cleanup_temp_file(temp_path)
-
 
 @router.post(
     "/analyze/chords",
@@ -192,7 +192,6 @@ async def analyze_chords(
     finally:
         _cleanup_temp_file(temp_path)
 
-
 @router.post(
     "/analyze/quality",
     tags=["Audio Analysis (API v1)"],
@@ -210,7 +209,6 @@ async def analyze_quality(
         return QualityAnalysisResponse(**result)
     finally:
         _cleanup_temp_file(temp_path)
-
 
 @router.post(
     "/analyze/full",
@@ -230,11 +228,6 @@ async def analyze_full(
     finally:
         _cleanup_temp_file(temp_path)
 
-
-from fastapi.responses import FileResponse
-from fastapi import BackgroundTasks
-
-
 @router.post(
     "/download/stream",
     tags=["Stream Downloader & Metadata (API v1)"],
@@ -245,13 +238,11 @@ async def download_and_stream_audio(
     req: UrlIntakeRequest,
     background_tasks: BackgroundTasks,
 ):
-    import httpx
-    downloader_url = os.getenv("DOWNLOADER_URL", "http://downloader-worker:8006")
     fmt = (req.audio_format or "flac").lower()
     try:
         async with httpx.AsyncClient(timeout=300.0) as client:
             resp = await client.post(
-                f"{downloader_url}/download",
+                f"{DOWNLOADER_URL}/download",
                 json={"url": req.url, "audio_format": fmt, "audio_quality": "0"}
             )
             if resp.status_code != 200:
@@ -262,6 +253,7 @@ async def download_and_stream_audio(
                 raise HTTPException(status_code=resp.status_code, detail=err_msg)
             dl_data = resp.json()
     except httpx.RequestError as e:
+        logger.error("Downloader microservice request error: %s", e)
         raise HTTPException(status_code=503, detail=f"Downloader microservice unreachable: {str(e)}")
 
     file_path = dl_data["file_path"]
@@ -284,7 +276,6 @@ async def download_and_stream_audio(
     background_tasks.add_task(_cleanup_temp_file, file_path)
 
     # Encode custom headers safely (ASCII-only)
-    import urllib.parse
     clean_title = urllib.parse.quote(str(dl_data.get("title", "")).encode("utf-8"))
     clean_uploader = urllib.parse.quote(str(dl_data.get("uploader", "") or "").encode("utf-8"))
 
@@ -303,7 +294,6 @@ async def download_and_stream_audio(
         headers=headers
     )
 
-
 @router.post(
     "/download/info",
     tags=["Stream Downloader & Metadata (API v1)"],
@@ -313,12 +303,10 @@ async def download_and_stream_audio(
 async def get_url_info(
     req: UrlIntakeRequest,
 ):
-    import httpx
-    downloader_url = os.getenv("DOWNLOADER_URL", "http://downloader-worker:8006")
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
-                f"{downloader_url}/info",
+                f"{DOWNLOADER_URL}/info",
                 json={"url": req.url}
             )
             if resp.status_code != 200:
@@ -329,8 +317,8 @@ async def get_url_info(
                 raise HTTPException(status_code=resp.status_code, detail=err_msg)
             return resp.json()
     except httpx.RequestError as e:
+        logger.error("Downloader microservice info request error: %s", e)
         raise HTTPException(status_code=503, detail=f"Downloader microservice unreachable: {str(e)}")
-
 
 @router.post(
     "/analyze/basic/url",
@@ -343,12 +331,10 @@ async def analyze_basic_from_url(
     req: UrlIntakeRequest,
     processor: BatchProcessor = Depends(get_processor)
 ):
-    import httpx
-    downloader_url = os.getenv("DOWNLOADER_URL", "http://downloader-worker:8006")
     try:
         async with httpx.AsyncClient(timeout=300.0) as client:
             resp = await client.post(
-                f"{downloader_url}/download",
+                f"{DOWNLOADER_URL}/download",
                 json={"url": req.url, "audio_format": req.audio_format or "flac", "audio_quality": "0"}
             )
             if resp.status_code != 200:
@@ -359,6 +345,7 @@ async def analyze_basic_from_url(
                 raise HTTPException(status_code=resp.status_code, detail=err_msg)
             dl_data = resp.json()
     except httpx.RequestError as e:
+        logger.error("Downloader microservice download request error: %s", e)
         raise HTTPException(status_code=503, detail=f"Downloader microservice unreachable: {str(e)}")
 
     file_path = dl_data["file_path"]
@@ -368,7 +355,6 @@ async def analyze_basic_from_url(
         return BasicAnalysisResponse(**result)
     finally:
         _cleanup_temp_file(file_path)
-
 
 @router.post(
     "/analyze/url",
@@ -381,12 +367,10 @@ async def analyze_from_url(
     req: UrlIntakeRequest,
     processor: BatchProcessor = Depends(get_processor)
 ):
-    import httpx
-    downloader_url = os.getenv("DOWNLOADER_URL", "http://downloader-worker:8006")
     try:
         async with httpx.AsyncClient(timeout=300.0) as client:
             resp = await client.post(
-                f"{downloader_url}/download",
+                f"{DOWNLOADER_URL}/download",
                 json={"url": req.url, "audio_format": req.audio_format or "flac", "audio_quality": "0"}
             )
             if resp.status_code != 200:
@@ -397,6 +381,7 @@ async def analyze_from_url(
                 raise HTTPException(status_code=resp.status_code, detail=err_msg)
             dl_data = resp.json()
     except httpx.RequestError as e:
+        logger.error("Downloader microservice full analysis request error: %s", e)
         raise HTTPException(status_code=503, detail=f"Downloader microservice unreachable: {str(e)}")
 
     file_path = dl_data["file_path"]
@@ -406,10 +391,6 @@ async def analyze_from_url(
         return FullAnalysisResponse(**result)
     finally:
         _cleanup_temp_file(file_path)
-
-
-from fastapi import Form
-
 
 @router.post(
     "/stretch",
@@ -428,7 +409,6 @@ async def stretch_audio_v1(
     output_format: str = Form("wav", description="Target format: wav, mp3, flac"),
 ):
     temp_path, orig_name = await _save_temp_upload(file)
-    stretch_worker_url = os.getenv("STRETCH_WORKER_URL", "http://stretch-worker:8007")
 
     try:
         async with httpx.AsyncClient(timeout=300.0) as client:
@@ -441,7 +421,7 @@ async def stretch_audio_v1(
                 "preserve_formants": preserve_formants,
                 "output_format": output_format,
             }
-            resp = await client.post(f"{stretch_worker_url}/process", json=payload)
+            resp = await client.post(f"{STRETCH_WORKER_URL}/process", json=payload)
             if resp.status_code != 200:
                 try:
                     err_msg = resp.json().get("detail", resp.text)
@@ -462,9 +442,7 @@ async def stretch_audio_v1(
                 engine="Rubber Band Library v4.0"
             )
     except httpx.RequestError as e:
+        logger.error("Stretch worker unreachable: %s", e)
         raise HTTPException(status_code=503, detail=f"Stretch worker unreachable: {str(e)}")
     finally:
         _cleanup_temp_file(temp_path)
-
-
-

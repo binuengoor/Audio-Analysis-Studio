@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { AudioFile, AnalysisResult, LibraryEntry } from '../types';
+import { AudioFile, AnalysisResult, LibraryEntry, ToastMessage } from '../types';
 import { buildBackendUrl } from '../config';
 
 interface AppState {
@@ -12,7 +12,10 @@ interface AppState {
   activeAudioUrl: string | null;
   activeTitle: string | null;
   isAnalyzing: boolean;
+  toasts: ToastMessage[];
 
+  showToast: (message: string, type?: ToastMessage['type'], durationMs?: number) => void;
+  removeToast: (id: string) => void;
   fetchLibrary: () => Promise<void>;
   selectTrack: (entry: LibraryEntry) => void;
   reanalyzeTrack: (filename: string) => Promise<void>;
@@ -37,6 +40,23 @@ export const useAudioStore = create<AppState>((set, get) => ({
   activeAudioUrl: null,
   activeTitle: null,
   isAnalyzing: false,
+  toasts: [],
+
+  showToast: (message: string, type: ToastMessage['type'] = 'info', durationMs: number = 4000) => {
+    const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const newToast: ToastMessage = { id, message, type, durationMs };
+    set((state) => ({ toasts: [...state.toasts, newToast] }));
+
+    if (durationMs > 0) {
+      setTimeout(() => {
+        get().removeToast(id);
+      }, durationMs);
+    }
+  },
+
+  removeToast: (id: string) => {
+    set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) }));
+  },
 
   fetchLibrary: async () => {
     try {
@@ -71,8 +91,9 @@ export const useAudioStore = create<AppState>((set, get) => ({
           activeTitle: currentActive?.filename ?? state.activeTitle,
         };
       });
-    } catch (error) {
-      console.error('Library fetch error', error);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error('Library fetch error:', msg);
     }
   },
 
@@ -105,10 +126,12 @@ export const useAudioStore = create<AppState>((set, get) => ({
 
       set({ activeAnalysis: result, isAnalyzing: false });
       await get().fetchLibrary();
-    } catch (error) {
-      console.error('Re-analysis failed:', error);
+      get().showToast(`Re-analysis complete for ${filename}`, 'success');
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error('Re-analysis failed:', msg);
       set({ isAnalyzing: false });
-      alert(`Re-analysis failed: ${error}`);
+      get().showToast(`Re-analysis failed: ${msg}`, 'error');
     }
   },
 
@@ -141,9 +164,12 @@ export const useAudioStore = create<AppState>((set, get) => ({
           });
         } else {
           console.error('Upload failed with status', uploadRes.status);
+          get().showToast(`Upload failed for ${file.name}`, 'error');
         }
-      } catch (err) {
-        console.error('File upload failed for', file.name, err);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('File upload failed for', file.name, msg);
+        get().showToast(`File upload failed for ${file.name}: ${msg}`, 'error');
       }
     }
 
@@ -154,6 +180,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
 
     // Refresh library with uploaded entries
     await get().fetchLibrary();
+    get().showToast(`Uploaded ${filenames.length} file(s). Analyzing...`, 'info');
 
     // Trigger Celery asynchronous batch queue for all uploaded files
     try {
@@ -194,7 +221,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
                 pendingJobIds.delete(jobId);
               }
             }
-          } catch (e) {
+          } catch (e: unknown) {
             console.error(`Error polling job ${jobId}`, e);
           }
         }
@@ -206,14 +233,17 @@ export const useAudioStore = create<AppState>((set, get) => ({
           clearInterval(pollInterval);
           set({ processing: false, isAnalyzing: false, progress: 100 });
           await get().fetchLibrary();
+          get().showToast('Batch analysis completed successfully!', 'success');
         } else {
           set({ processing: true, progress });
         }
       }, 2000);
 
-    } catch (error) {
-      console.error('Batch queue error:', error);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error('Batch queue error:', msg);
       set({ processing: false, isAnalyzing: false });
+      get().showToast(`Batch queue error: ${msg}`, 'error');
     }
   },
 
@@ -259,6 +289,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
       });
 
       await get().fetchLibrary();
+      get().showToast(`Imported audio stream for: ${intakeData.title || entry.filename}`, 'success');
 
       if (jobId) {
         // Poll the Celery job until completion
@@ -275,23 +306,27 @@ export const useAudioStore = create<AppState>((set, get) => ({
                 }
                 set({ processing: false, isAnalyzing: false, progress: 100 });
                 await get().fetchLibrary();
+                get().showToast(`Analysis completed for ${intakeData.title || entry.filename}`, 'success');
               } else if (jobData.status === 'FAILURE') {
                 clearInterval(pollJob);
                 set({ processing: false, isAnalyzing: false });
                 console.error(`Job ${jobId} failed:`, jobData.error);
                 await get().fetchLibrary();
+                get().showToast(`Analysis failed: ${jobData.error}`, 'error');
               }
             }
-          } catch (e) {
+          } catch (e: unknown) {
             console.error(`Error polling job ${jobId}`, e);
           }
         }, 2000);
       } else {
         set({ processing: false, isAnalyzing: false, progress: 100 });
       }
-    } catch (error: any) {
-      console.error('URL intake failed:', error);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error('URL intake failed:', msg);
       set({ processing: false, isAnalyzing: false });
+      get().showToast(`URL import failed: ${msg}`, 'error');
       throw error;
     }
   },
@@ -329,7 +364,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
       if (!status.is_processing) {
         await get().fetchLibrary();
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Polling failed', error);
     }
   },
@@ -352,10 +387,11 @@ export const useAudioStore = create<AppState>((set, get) => ({
       const data = await response.json();
 
       await get().fetchLibrary();
-      alert(`Success! Processed & saved as: ${data.output_filename}`);
-    } catch (error) {
-      console.error('Process error:', error);
-      alert('Failed to process file');
+      get().showToast(`Saved as: ${data.output_filename}`, 'success');
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error('Process error:', msg);
+      get().showToast(`Failed to process file: ${msg}`, 'error');
     }
   },
 
@@ -363,7 +399,8 @@ export const useAudioStore = create<AppState>((set, get) => ({
     try {
       await fetch(buildBackendUrl(`/api/library/${id}/input`), { method: 'DELETE' });
       await get().fetchLibrary();
-    } catch (error) {
+      get().showToast('Input file deleted', 'info');
+    } catch (error: unknown) {
       console.error('Delete input failed', error);
     }
   },
@@ -372,7 +409,8 @@ export const useAudioStore = create<AppState>((set, get) => ({
     try {
       await fetch(buildBackendUrl(`/api/library/${id}/output`), { method: 'DELETE' });
       await get().fetchLibrary();
-    } catch (error) {
+      get().showToast('Output file deleted', 'info');
+    } catch (error: unknown) {
       console.error('Delete output failed', error);
     }
   },
@@ -381,7 +419,8 @@ export const useAudioStore = create<AppState>((set, get) => ({
     try {
       await fetch(buildBackendUrl(`/api/library/${id}`), { method: 'DELETE' });
       await get().fetchLibrary();
-    } catch (error) {
+      get().showToast('Library entry deleted', 'info');
+    } catch (error: unknown) {
       console.error('Delete entry failed', error);
     }
   },
@@ -393,9 +432,11 @@ export const useAudioStore = create<AppState>((set, get) => ({
       });
       if (!response.ok) throw new Error('Failed to clear library');
       set({ library: [], activeEntryId: null, activeAnalysis: null, activeAudioUrl: null, activeTitle: null });
-    } catch (error) {
-      console.error('Failed to clear library', error);
-      alert('Failed to clear library');
+      get().showToast('Library cleared completely', 'info');
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error('Failed to clear library', msg);
+      get().showToast(`Failed to clear library: ${msg}`, 'error');
     }
   },
 }));

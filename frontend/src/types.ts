@@ -67,3 +67,10 @@ export interface LibraryEntry {
   created_at: number;
   status: string;
 }
+
+export interface ToastMessage {
+  id: string;
+  message: string;
+  type?: 'success' | 'error' | 'info' | 'warning';
+  durationMs?: number;
+}
