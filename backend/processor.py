@@ -24,6 +24,20 @@ class BatchProcessor:
         self.results: Dict[str, AnalysisResult] = {}
         self.processed_count = 0
         self.total_count = 0
+        self._http_client: Optional[httpx.AsyncClient] = None
+
+    async def get_http_client(self) -> httpx.AsyncClient:
+        """Returns shared pooled AsyncClient or creates one if not initialized."""
+        if self._http_client is None or self._http_client.is_closed:
+            limits = httpx.Limits(max_keepalive_connections=20, max_connections=50)
+            self._http_client = httpx.AsyncClient(limits=limits, timeout=180.0)
+        return self._http_client
+
+    async def close(self) -> None:
+        """Closes shared AsyncClient session."""
+        if self._http_client and not self._http_client.is_closed:
+            await self._http_client.aclose()
+            self._http_client = None
 
     async def _call_worker(self, client: httpx.AsyncClient, worker_url: str, file_path: str) -> Dict[str, Any]:
         """Send asynchronous HTTP POST request with absolute file_path to worker."""
@@ -46,17 +60,17 @@ class BatchProcessor:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
 
-        # Send simultaneous requests across all 5 workers
-        async with httpx.AsyncClient() as client:
-            bpm_task = self._call_worker(client, BPM_WORKER_URL, file_path)
-            key_task = self._call_worker(client, KEY_WORKER_URL, file_path)
-            chord_task = self._call_worker(client, CHORD_WORKER_URL, file_path)
-            quality_task = self._call_worker(client, QUALITY_WORKER_URL, file_path)
-            structure_task = self._call_worker(client, STRUCTURE_WORKER_URL, file_path)
+        # Send simultaneous requests across all 5 workers using pooled client
+        client = await self.get_http_client()
+        bpm_task = self._call_worker(client, BPM_WORKER_URL, file_path)
+        key_task = self._call_worker(client, KEY_WORKER_URL, file_path)
+        chord_task = self._call_worker(client, CHORD_WORKER_URL, file_path)
+        quality_task = self._call_worker(client, QUALITY_WORKER_URL, file_path)
+        structure_task = self._call_worker(client, STRUCTURE_WORKER_URL, file_path)
 
-            bpm_res, key_res, chord_res, quality_res, structure_res = await asyncio.gather(
-                bpm_task, key_task, chord_task, quality_task, structure_task
-            )
+        bpm_res, key_res, chord_res, quality_res, structure_res = await asyncio.gather(
+            bpm_task, key_task, chord_task, quality_task, structure_task
+        )
 
         # 1. Parse BPM Worker Response
         bpm = float(bpm_res.get("bpm", 120.0))
@@ -124,10 +138,10 @@ class BatchProcessor:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
 
-        async with httpx.AsyncClient() as client:
-            bpm_task = self._call_worker(client, BPM_WORKER_URL, file_path)
-            key_task = self._call_worker(client, KEY_WORKER_URL, file_path)
-            bpm_res, key_res = await asyncio.gather(bpm_task, key_task)
+        client = await self.get_http_client()
+        bpm_task = self._call_worker(client, BPM_WORKER_URL, file_path)
+        key_task = self._call_worker(client, KEY_WORKER_URL, file_path)
+        bpm_res, key_res = await asyncio.gather(bpm_task, key_task)
 
         bpm = float(bpm_res.get("bpm", 120.0))
         bpm_confidence = float(bpm_res.get("bpm_confidence", 0.9))
@@ -151,8 +165,8 @@ class BatchProcessor:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
 
-        async with httpx.AsyncClient() as client:
-            bpm_res = await self._call_worker(client, BPM_WORKER_URL, file_path)
+        client = await self.get_http_client()
+        bpm_res = await self._call_worker(client, BPM_WORKER_URL, file_path)
 
         return {
             "filename": filename or os.path.basename(file_path),
@@ -165,8 +179,8 @@ class BatchProcessor:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
 
-        async with httpx.AsyncClient() as client:
-            key_res = await self._call_worker(client, KEY_WORKER_URL, file_path)
+        client = await self.get_http_client()
+        key_res = await self._call_worker(client, KEY_WORKER_URL, file_path)
 
         return {
             "filename": filename or os.path.basename(file_path),
@@ -180,8 +194,8 @@ class BatchProcessor:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
 
-        async with httpx.AsyncClient() as client:
-            structure_res = await self._call_worker(client, STRUCTURE_WORKER_URL, file_path)
+        client = await self.get_http_client()
+        structure_res = await self._call_worker(client, STRUCTURE_WORKER_URL, file_path)
 
         raw_segments = structure_res.get("segments", []) if isinstance(structure_res, dict) else []
         segments = []
@@ -207,8 +221,8 @@ class BatchProcessor:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
 
-        async with httpx.AsyncClient() as client:
-            chord_res = await self._call_worker(client, CHORD_WORKER_URL, file_path)
+        client = await self.get_http_client()
+        chord_res = await self._call_worker(client, CHORD_WORKER_URL, file_path)
 
         raw_chords = chord_res.get("chords", chord_res if isinstance(chord_res, list) else [])
         chords = []
@@ -233,8 +247,8 @@ class BatchProcessor:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
 
-        async with httpx.AsyncClient() as client:
-            quality_res = await self._call_worker(client, QUALITY_WORKER_URL, file_path)
+        client = await self.get_http_client()
+        quality_res = await self._call_worker(client, QUALITY_WORKER_URL, file_path)
 
         # Cleanup generated spectrogram image from disk if created by worker
         if quality_res and "spectrogram_image_path" in quality_res:

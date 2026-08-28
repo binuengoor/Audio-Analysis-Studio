@@ -2,6 +2,23 @@ import { create } from 'zustand';
 import { AudioFile, AnalysisResult, LibraryEntry, ToastMessage } from '../types';
 import { buildBackendUrl } from '../config';
 
+const activePollIntervals = new Set<ReturnType<typeof setInterval>>();
+
+export const stopAllPolling = () => {
+  activePollIntervals.forEach((intervalId) => clearInterval(intervalId));
+  activePollIntervals.clear();
+};
+
+const revokeUrlIfBlob = (url: string | null) => {
+  if (url && url.startsWith('blob:')) {
+    try {
+      URL.revokeObjectURL(url);
+    } catch {
+      // ignore
+    }
+  }
+};
+
 interface AppState {
   queue: AudioFile[];
   library: LibraryEntry[];
@@ -75,7 +92,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
         }
 
         const activeAnalysis = currentActive?.analysis ?? state.activeAnalysis;
-        const activeAudioUrl = currentActive 
+        const newAudioUrl = currentActive 
           ? (currentActive.output_path 
               ? buildBackendUrl(`/files/output/${encodeURIComponent(currentActive.output_path)}`)
               : currentActive.input_path 
@@ -83,17 +100,22 @@ export const useAudioStore = create<AppState>((set, get) => ({
                 : null)
           : state.activeAudioUrl;
 
+        if (state.activeAudioUrl && state.activeAudioUrl !== newAudioUrl) {
+          revokeUrlIfBlob(state.activeAudioUrl);
+        }
+
         return {
           library: newLibrary,
           activeEntryId: currentActive?.id ?? null,
           activeAnalysis,
-          activeAudioUrl,
+          activeAudioUrl: newAudioUrl,
           activeTitle: currentActive?.filename ?? state.activeTitle,
         };
       });
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       console.error('Library fetch error:', msg);
+      get().showToast(`Failed to fetch library: ${msg}`, 'error');
     }
   },
 
@@ -103,6 +125,11 @@ export const useAudioStore = create<AppState>((set, get) => ({
       : entry.input_path 
         ? buildBackendUrl(`/files/input/${encodeURIComponent(entry.input_path)}`)
         : null;
+
+    const currentUrl = get().activeAudioUrl;
+    if (currentUrl && currentUrl !== audioUrl) {
+      revokeUrlIfBlob(currentUrl);
+    }
 
     set({
       activeEntryId: entry.id,
@@ -162,11 +189,16 @@ export const useAudioStore = create<AppState>((set, get) => ({
         if (uploadRes.ok) {
           const entry: LibraryEntry = await uploadRes.json();
           filenames.push(entry.filename);
+          // Revoke old blob preview if active
+          const oldUrl = get().activeAudioUrl;
+          revokeUrlIfBlob(oldUrl);
+
+          const previewUrl = URL.createObjectURL(file);
           // Set preview URL for immediate display
           set({
             activeEntryId: entry.id,
             activeTitle: entry.filename,
-            activeAudioUrl: URL.createObjectURL(file),
+            activeAudioUrl: previewUrl,
             activeAnalysis: null,
           });
         } else {
@@ -238,6 +270,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
 
         if (remaining === 0) {
           clearInterval(pollInterval);
+          activePollIntervals.delete(pollInterval);
           set({ processing: false, isAnalyzing: false, progress: 100 });
           await get().fetchLibrary();
           get().showToast('Batch analysis completed successfully!', 'success');
@@ -245,6 +278,8 @@ export const useAudioStore = create<AppState>((set, get) => ({
           set({ processing: true, progress });
         }
       }, 2000);
+
+      activePollIntervals.add(pollInterval);
 
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -282,6 +317,9 @@ export const useAudioStore = create<AppState>((set, get) => ({
       const entry: LibraryEntry = intakeData.entry;
       const jobId: string | undefined = intakeData.job_id;
 
+      // Revoke old blob preview if active
+      revokeUrlIfBlob(get().activeAudioUrl);
+
       // Set preview / active state
       const audioUrl = entry.input_path
         ? buildBackendUrl(`/files/input/${encodeURIComponent(entry.input_path)}`)
@@ -307,6 +345,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
               const jobData = await jobRes.json();
               if (jobData.status === 'SUCCESS') {
                 clearInterval(pollJob);
+                activePollIntervals.delete(pollJob);
                 const completedAnalysis: AnalysisResult = jobData.result;
                 if (get().activeTitle === completedAnalysis.filename) {
                   set({ activeAnalysis: completedAnalysis });
@@ -316,6 +355,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
                 get().showToast(`Analysis completed for ${intakeData.title || entry.filename}`, 'success');
               } else if (jobData.status === 'FAILURE') {
                 clearInterval(pollJob);
+                activePollIntervals.delete(pollJob);
                 set({ processing: false, isAnalyzing: false });
                 console.error(`Job ${jobId} failed:`, jobData.error);
                 await get().fetchLibrary();
@@ -326,6 +366,8 @@ export const useAudioStore = create<AppState>((set, get) => ({
             console.error(`Error polling job ${jobId}`, e);
           }
         }, 2000);
+
+        activePollIntervals.add(pollJob);
       } else {
         set({ processing: false, isAnalyzing: false, progress: 100 });
       }
@@ -347,6 +389,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
   pollBatchStatus: async () => {
     try {
       const response = await fetch(buildBackendUrl('/api/status'));
+      if (!response.ok) throw new Error('Failed to fetch status');
       const status = await response.json();
       
       set((state: AppState) => {
@@ -404,41 +447,56 @@ export const useAudioStore = create<AppState>((set, get) => ({
 
   deleteInput: async (id: string) => {
     try {
-      await fetch(buildBackendUrl(`/api/library/${id}/input`), { method: 'DELETE' });
+      const res = await fetch(buildBackendUrl(`/api/library/${id}/input`), { method: 'DELETE' });
+      if (!res.ok) throw new Error(`Failed with status ${res.status}`);
       await get().fetchLibrary();
       get().showToast('Input file deleted', 'info');
     } catch (error: unknown) {
-      console.error('Delete input failed', error);
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error('Delete input failed', msg);
+      get().showToast(`Failed to delete input file: ${msg}`, 'error');
     }
   },
 
   deleteOutput: async (id: string) => {
     try {
-      await fetch(buildBackendUrl(`/api/library/${id}/output`), { method: 'DELETE' });
+      const res = await fetch(buildBackendUrl(`/api/library/${id}/output`), { method: 'DELETE' });
+      if (!res.ok) throw new Error(`Failed with status ${res.status}`);
       await get().fetchLibrary();
       get().showToast('Output file deleted', 'info');
     } catch (error: unknown) {
-      console.error('Delete output failed', error);
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error('Delete output failed', msg);
+      get().showToast(`Failed to delete output file: ${msg}`, 'error');
     }
   },
 
   deleteEntry: async (id: string) => {
     try {
-      await fetch(buildBackendUrl(`/api/library/${id}`), { method: 'DELETE' });
+      const current = get().library.find((e) => e.id === id);
+      if (current && get().activeEntryId === id) {
+        revokeUrlIfBlob(get().activeAudioUrl);
+      }
+      const res = await fetch(buildBackendUrl(`/api/library/${id}`), { method: 'DELETE' });
+      if (!res.ok) throw new Error(`Failed with status ${res.status}`);
       await get().fetchLibrary();
       get().showToast('Library entry deleted', 'info');
     } catch (error: unknown) {
-      console.error('Delete entry failed', error);
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error('Delete entry failed', msg);
+      get().showToast(`Failed to delete entry: ${msg}`, 'error');
     }
   },
 
   clearLibrary: async () => {
     try {
+      stopAllPolling();
+      revokeUrlIfBlob(get().activeAudioUrl);
       const response = await fetch(buildBackendUrl('/api/library'), {
         method: 'DELETE',
       });
       if (!response.ok) throw new Error('Failed to clear library');
-      set({ library: [], activeEntryId: null, activeAnalysis: null, activeAudioUrl: null, activeTitle: null });
+      set({ library: [], activeEntryId: null, activeAnalysis: null, activeAudioUrl: null, activeTitle: null, processing: false, isAnalyzing: false, progress: 0 });
       get().showToast('Library cleared completely', 'info');
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);

@@ -46,6 +46,12 @@ A high-performance audio analysis dashboard powered by an asynchronous **multi-e
 - **Flexible Token-Based Renaming:**
   - Standardized filename pattern generator for library downloads and transformed pitch-shifted files (`{OriginalName}`, `{Key}`, `{Camelot}`, `{BPM}`, `{Pitch}`, `{Tempo}`). Preserves musical notation symbols (`#`, etc.).
 
+- **Progressive Web App (PWA) & Offline Shell:**
+  - Fully installable on Desktop (Chrome, Edge, Brave), macOS, and Mobile (iOS "Add to Home Screen" and Android).
+  - Standalone app window mode with custom icon assets and dark theme splash integration.
+  - Workbox Service Worker caching for instant loading of the UI shell and static assets.
+  - Automatic background service worker cache updates on new releases.
+
 - **Apple Silicon & Multi-Architecture Native Support:**
   - Fully optimized for ARM64 (Apple Silicon M1/M2/M3/M4) and AMD64 with OpenBLAS hardware acceleration and multi-threaded linear algebra.
 

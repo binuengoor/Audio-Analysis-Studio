@@ -49,5 +49,6 @@
 - [x] T030 [UI] Apply global dark theme polish
 - [x] T031 [Docs] Write comprehensive README & repo hygiene notes
 - [x] T032 [CI/CD] Ship backend & frontend Docker images to GHCR via GitHub Actions
+- [x] T033 [PWA] Progressive Web App configuration, manifest, icons & Workbox caching
 
 

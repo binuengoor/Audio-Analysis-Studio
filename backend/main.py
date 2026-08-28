@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -8,6 +9,7 @@ from config import (
     INPUT_DIR,
     OUTPUT_DIR,
     ALLOWED_ORIGINS,
+    ensure_directories,
     logger,
 )
 from processor import BatchProcessor
@@ -19,6 +21,25 @@ from routers.studio import (
     set_library as set_studio_library,
 )
 from routers.system import router as system_router
+
+# Instantiate and wire shared core engines
+processor = BatchProcessor(INPUT_DIR)
+library = LibraryManager(SHARED_DATA_DIR)
+
+set_v1_processor(processor)
+set_studio_processor(processor)
+set_studio_library(library)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manages application lifecycle, directory initialization, and connection pooling."""
+    ensure_directories()
+    logger.info("Audio Analysis Studio Gateway started")
+    yield
+    await processor.close()
+    logger.info("Audio Analysis Studio Gateway shutdown complete")
+
 
 tags_metadata = [
     {
@@ -64,6 +85,7 @@ X-API-Key: your_secret_api_key
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
+    lifespan=lifespan,
 )
 
 # Setup CORS with configuration
@@ -78,14 +100,6 @@ app.add_middleware(
 # Mount static files for audio preview streaming and spectrogram viewing
 app.mount("/files/input", StaticFiles(directory=INPUT_DIR), name="input_files")
 app.mount("/files/output", StaticFiles(directory=OUTPUT_DIR), name="output_files")
-
-# Instantiate and wire shared core engines
-processor = BatchProcessor(INPUT_DIR)
-library = LibraryManager(SHARED_DATA_DIR)
-
-set_v1_processor(processor)
-set_studio_processor(processor)
-set_studio_library(library)
 
 # Mount Sub-Routers
 app.include_router(api_v1_router)

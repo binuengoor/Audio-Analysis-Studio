@@ -13,6 +13,13 @@ export interface UseAudioPreviewReturn {
   reset: () => void;
 }
 
+export const formatAudioDuration = (secs: number): string => {
+  if (isNaN(secs) || secs < 0) return '0:00';
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+};
+
 export function useAudioPreview(audioUrl: string | null): UseAudioPreviewReturn {
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
@@ -72,10 +79,7 @@ export function useAudioPreview(audioUrl: string | null): UseAudioPreviewReturn 
   }, []);
 
   const formatSecs = useCallback((secs: number): string => {
-    if (isNaN(secs) || secs < 0) return '0:00';
-    const m = Math.floor(secs / 60);
-    const s = Math.floor(secs % 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
+    return formatAudioDuration(secs);
   }, []);
 
   return {

@@ -67,8 +67,9 @@ export const UploadZone: React.FC = () => {
     try {
       await importAudioFromUrl(trimmed, audioFormat);
       setUrlInput('');
-    } catch (err: any) {
-      setUrlError(err.message || 'Failed to download audio from URL');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setUrlError(msg || 'Failed to download audio from URL');
     } finally {
       setUrlLoading(false);
     }
@@ -81,8 +82,9 @@ export const UploadZone: React.FC = () => {
         setUrlInput(text.trim());
         setUrlError(null);
       }
-    } catch (err) {
-      console.warn('Clipboard read failed:', err);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn('Clipboard read failed:', msg);
     }
   };
 

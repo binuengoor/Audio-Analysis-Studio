@@ -4,7 +4,7 @@ services:
     container_name: redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -77,7 +77,7 @@ services:
     container_name: structure-worker
     restart: unless-stopped
     ports:
-      - "8005:8005"
+      - "127.0.0.1:8005:8005"
     volumes:
       - ./data:/app/data/shared_audio
     environment:
@@ -95,7 +95,7 @@ services:
     container_name: quality-worker
     restart: unless-stopped
     ports:
-      - "8004:8004"
+      - "127.0.0.1:8004:8004"
     volumes:
       - ./data:/app/data/shared_audio
     environment:
@@ -113,7 +113,7 @@ services:
     container_name: bpm-worker
     restart: unless-stopped
     ports:
-      - "8001:8001"
+      - "127.0.0.1:8001:8001"
     volumes:
       - ./data:/app/data/shared_audio
     environment:
@@ -131,7 +131,7 @@ services:
     container_name: key-worker
     restart: unless-stopped
     ports:
-      - "8002:8002"
+      - "127.0.0.1:8002:8002"
     volumes:
       - ./data:/app/data/shared_audio
     environment:
@@ -150,7 +150,7 @@ services:
     container_name: chord-worker
     restart: unless-stopped
     ports:
-      - "8003:8003"
+      - "127.0.0.1:8003:8003"
     volumes:
       - ./data:/app/data/shared_audio
     environment:
@@ -168,7 +168,7 @@ services:
     container_name: stretch-worker
     restart: unless-stopped
     ports:
-      - "8007:8007"
+      - "127.0.0.1:8007:8007"
     volumes:
       - ./data:/app/data/shared_audio
     environment:
@@ -186,7 +186,7 @@ services:
     container_name: downloader-worker
     restart: unless-stopped
     ports:
-      - "8006:8006"
+      - "127.0.0.1:8006:8006"
     volumes:
       - ./data:/app/data/shared_audio
       - ./config:/app/cookies

@@ -15,9 +15,14 @@ OUTPUT_DIR: str = os.path.join(SHARED_DATA_DIR, "output")
 SQLITE_DB_PATH: str = os.path.join(SHARED_DATA_DIR, "library.db")
 LEGACY_JSON_DB_PATH: str = os.path.join(SHARED_DATA_DIR, "library.json")
 
-# Ensure critical directories exist
-os.makedirs(INPUT_DIR, exist_ok=True)
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+# Directory initialization helper
+def ensure_directories() -> None:
+    """Ensures input and output directories exist on disk."""
+    os.makedirs(INPUT_DIR, exist_ok=True)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# Call on import as safe default, but allow explicit invocation during app lifespan
+ensure_directories()
 
 # --- Microservice URLs ---
 BPM_WORKER_URL: str = os.getenv("BPM_WORKER_URL", "http://bpm-worker:8001")
