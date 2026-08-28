@@ -100,10 +100,15 @@ export function transposeNote(note: string, semitones: number): string {
   return NOTES_SHARP[targetSemitone];
 }
 
+export interface TransposedKey {
+  standard: string;
+  camelot: string;
+}
+
 /**
  * Transposes a full key (e.g. "A minor", "8A") by semitones and returns standard key and Camelot key.
  */
-export function transposeKey(keyStr: string, semitones: number): { standard: string; camelot: string } | null {
+export function transposeKey(keyStr: string, semitones: number): TransposedKey | null {
   const parsed = parseKey(keyStr);
   if (!parsed) return null;
 

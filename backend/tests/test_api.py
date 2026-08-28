@@ -130,7 +130,7 @@ def test_celery_batch_and_jobs_api(mock_delay):
     assert data["job_ids"] == ["test-job-uuid-1234"]
 
     # 2. Test GET /api/jobs/{job_id} with mock AsyncResult
-    with patch("main.AsyncResult") as mock_async_result:
+    with patch("routers.studio.AsyncResult") as mock_async_result:
         instance = mock_async_result.return_value
         instance.state = "SUCCESS"
         instance.result = {
