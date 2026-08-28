@@ -3,6 +3,7 @@ import asyncio
 from celery import Celery
 from processor import BatchProcessor
 from library import LibraryManager
+from utils import resolve_audio_file_path
 from config import (
     REDIS_URL,
     SHARED_DATA_DIR,
@@ -36,17 +37,11 @@ def analyze_audio_task(self, filename: str, file_path: str = ""):
     """
     self.update_state(state="PROCESSING", meta={"filename": filename})
 
-    target_path = file_path or os.path.join(INPUT_DIR, filename)
-    if not os.path.exists(target_path):
-        # Search recursively in input directory
-        for root, _, files in os.walk(INPUT_DIR):
-            if filename in files:
-                target_path = os.path.join(root, filename)
-                break
+    target_path = file_path or resolve_audio_file_path(filename)
 
-    if not os.path.exists(target_path):
-        logger.error("Celery task failed: File not found on shared volume: %s", target_path)
-        raise FileNotFoundError(f"File not found on shared volume: {target_path}")
+    if not target_path or not os.path.exists(target_path):
+        logger.error("Celery task failed: File not found on shared volume: %s", filename)
+        raise FileNotFoundError(f"File not found on shared volume: {filename}")
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)

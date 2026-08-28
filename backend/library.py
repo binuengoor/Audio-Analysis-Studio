@@ -122,13 +122,22 @@ class LibraryManager:
         """Maintained for backward compatibility; SQLite auto-commits on mutation."""
         pass
 
-    def add_entry(self, filename: str) -> LibraryEntry:
+    def add_entry(
+        self,
+        filename: str,
+        input_path: Optional[str] = None,
+        output_path: Optional[str] = None,
+        status: str = "uploaded",
+    ) -> LibraryEntry:
+        # Default input_path if neither is explicitly passed
+        eff_input = input_path if (input_path is not None or output_path is not None) else filename
         entry = LibraryEntry(
             id=str(uuid.uuid4()),
             filename=filename,
-            input_path=filename,
+            input_path=eff_input,
+            output_path=output_path,
             created_at=time.time(),
-            status="uploaded",
+            status=status,
         )
         with self._get_connection() as conn:
             conn.execute(
@@ -136,7 +145,7 @@ class LibraryManager:
                 INSERT INTO library (id, filename, input_path, output_path, analysis_json, created_at, status)
                 VALUES (?, ?, ?, ?, NULL, ?, ?);
                 """,
-                (entry.id, entry.filename, entry.input_path, None, entry.created_at, entry.status),
+                (entry.id, entry.filename, entry.input_path, entry.output_path, entry.created_at, entry.status),
             )
             conn.commit()
         return entry

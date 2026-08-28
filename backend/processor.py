@@ -4,6 +4,7 @@ from typing import List, Optional, Dict, Any
 import httpx
 from metadata import write_audio_metadata, get_audio_duration
 from models import AnalysisResult, ChordSegment, SectionSegment
+from utils import resolve_audio_file_path
 from config import (
     BPM_WORKER_URL,
     KEY_WORKER_URL,
@@ -305,18 +306,12 @@ class BatchProcessor:
         """
         Process a single file immediately (Individual Analysis).
         Uses the lock to ensure it doesn't conflict with batch processing.
+        Locates the file in either input_dir or output_dir.
         """
         async with self.lock:
-            file_path = os.path.join(self.upload_dir, filename)
-            if not os.path.exists(file_path):
-                found = False
-                for root, _, files in os.walk(self.upload_dir):
-                    if filename in files:
-                        file_path = os.path.join(root, filename)
-                        found = True
-                        break
-                if not found:
-                    raise FileNotFoundError(f"File not found: {filename}")
+            file_path = resolve_audio_file_path(filename, input_dir=self.upload_dir)
+            if not file_path or not os.path.exists(file_path):
+                raise FileNotFoundError(f"File not found: {filename}")
 
             result = await self.analyze_file_microservices(file_path, filename=filename)
             self.results[filename] = AnalysisResult(**result)

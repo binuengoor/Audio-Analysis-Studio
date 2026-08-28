@@ -1,6 +1,7 @@
 import os
 import re
 import unicodedata
+from typing import Optional
 
 def sanitize_filename(filename: str, fallback: str = "upload.wav") -> str:
     """
@@ -31,3 +32,61 @@ def sanitize_filename(filename: str, fallback: str = "upload.wav") -> str:
         return fallback
 
     return filename
+
+
+def resolve_audio_file_path(
+    filename: str,
+    input_dir: Optional[str] = None,
+    output_dir: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Locates an audio file across input and output storage directories.
+    Handles files that originated from uploads (input), URL downloads (input),
+    time-stretching/pitch-shifting (output), or processed/renamed tracks (output).
+    """
+    if not filename:
+        return None
+
+    # Lazy-import defaults if not explicitly passed
+    if input_dir is None or output_dir is None:
+        from config import INPUT_DIR, OUTPUT_DIR, SHARED_DATA_DIR
+        input_dir = input_dir or INPUT_DIR
+        output_dir = output_dir or OUTPUT_DIR
+    else:
+        SHARED_DATA_DIR = os.path.dirname(input_dir)
+
+    clean_name = sanitize_filename(filename)
+
+    # 1. Direct match in input_dir
+    candidate = os.path.join(input_dir, clean_name)
+    if os.path.isfile(candidate):
+        return candidate
+
+    # 2. Direct match in output_dir
+    candidate = os.path.join(output_dir, clean_name)
+    if os.path.isfile(candidate):
+        return candidate
+
+    # 3. Recursive search in input_dir
+    if os.path.exists(input_dir):
+        for root, _, files in os.walk(input_dir):
+            if clean_name in files:
+                p = os.path.join(root, clean_name)
+                if os.path.isfile(p):
+                    return p
+
+    # 4. Recursive search in output_dir
+    if os.path.exists(output_dir):
+        for root, _, files in os.walk(output_dir):
+            if clean_name in files:
+                p = os.path.join(root, clean_name)
+                if os.path.isfile(p):
+                    return p
+
+    # 5. Direct match in base shared directory
+    if SHARED_DATA_DIR:
+        candidate = os.path.join(SHARED_DATA_DIR, clean_name)
+        if os.path.isfile(candidate):
+            return candidate
+
+    return None

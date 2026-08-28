@@ -121,7 +121,14 @@ export const useAudioStore = create<AppState>((set, get) => ({
         body: JSON.stringify({ filename }),
       });
 
-      if (!response.ok) throw new Error('Re-analysis failed');
+      if (!response.ok) {
+        let errDetail = 'Re-analysis failed';
+        try {
+          const errData = await response.json();
+          errDetail = errData.detail || errDetail;
+        } catch {}
+        throw new Error(errDetail);
+      }
       const result: AnalysisResult = await response.json();
 
       set({ activeAnalysis: result, isAnalyzing: false });

@@ -14,7 +14,7 @@ from config import (
     STRETCH_WORKER_URL,
     logger,
 )
-from utils import sanitize_filename
+from utils import sanitize_filename, resolve_audio_file_path
 from models import (
     AnalysisResult,
     AnalyzeRequest,
@@ -158,18 +158,7 @@ async def stretch_audio(
     filename = sanitize_filename(raw_filename) if raw_filename else None
 
     if not file_path and filename:
-        candidate = os.path.join(INPUT_DIR, filename)
-        if os.path.exists(candidate):
-            file_path = candidate
-        else:
-            candidate_out = os.path.join(OUTPUT_DIR, filename)
-            if os.path.exists(candidate_out):
-                file_path = candidate_out
-            else:
-                for root, _, files in os.walk(INPUT_DIR):
-                    if filename in files:
-                        file_path = os.path.join(root, filename)
-                        break
+        file_path = resolve_audio_file_path(filename)
 
     if not file_path or not os.path.exists(file_path):
         raise HTTPException(
@@ -213,8 +202,8 @@ async def stretch_audio(
     if request.add_to_library:
         entry = library.get_entry_by_filename(out_name)
         if not entry:
-            entry = library.add_entry(out_name)
-        if entry:
+            entry = library.add_entry(out_name, input_path=None, output_path=out_name)
+        else:
             library.set_output(entry.id, out_name)
             entry = library.get_entry(entry.id)
 
@@ -286,7 +275,11 @@ async def analyze_audio(
     try:
         entry = library.get_entry_by_filename(filename)
         if not entry:
-            entry = library.add_entry(filename)
+            resolved_p = resolve_audio_file_path(filename)
+            if resolved_p and resolved_p.startswith(OUTPUT_DIR):
+                entry = library.add_entry(filename, input_path=None, output_path=filename)
+            else:
+                entry = library.add_entry(filename, input_path=filename, output_path=None)
 
         result = await processor.process_file(filename)
 
@@ -295,7 +288,10 @@ async def analyze_audio(
 
         return result
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="File not found")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Audio file '{filename}' not found in library storage",
+        )
     except Exception as e:
         logger.error("Analyze error for %s: %s", filename, e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
