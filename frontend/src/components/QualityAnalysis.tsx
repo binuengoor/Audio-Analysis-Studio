@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { QualityResult } from '../types';
-import { buildBackendUrl } from '../config';
+import { buildFileUrl } from '../config';
 
 interface QualityAnalysisProps {
   quality: QualityResult;
@@ -15,7 +15,7 @@ export const QualityAnalysis: React.FC<QualityAnalysisProps> = ({ quality }) => 
 
   // Extract filename from spectrogram path to build static backend URL
   const specFilename = spectrogram_image_path ? spectrogram_image_path.split('/').pop() : null;
-  const specUrl = specFilename ? buildBackendUrl(`/files/input/${encodeURIComponent(specFilename)}`) : null;
+  const specUrl = specFilename ? buildFileUrl(`/files/input/${encodeURIComponent(specFilename)}`) : null;
 
   const isLosslessContainer = ['WAV', 'FLAC', 'AIFF', 'ALAC'].includes(container.codec.toUpperCase());
   const isLosslessCutoff = authenticity.cutoff_hz >= 20000;

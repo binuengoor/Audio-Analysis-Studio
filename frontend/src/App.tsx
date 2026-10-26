@@ -8,6 +8,7 @@ import { QualityAnalysis } from './components/QualityAnalysis';
 import { ServiceHealthBadge } from './components/ServiceHealthBadge';
 import { Library } from './components/Library';
 import { ToastContainer } from './components/Toast';
+import { ApiKeyDialog } from './components/ApiKeyDialog';
 import { useAudioStore } from './store/useAudioStore';
 
 function App() {
@@ -148,11 +149,11 @@ function App() {
                   <div className="grid grid-cols-2 gap-2 text-center pt-2 border-t border-slate-800">
                     <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800/80">
                       <div className="text-[10px] text-slate-400 uppercase font-semibold">Key</div>
-                      <div className="text-base font-bold text-blue-300 mt-0.5">{activeAnalysis.key_camelot}</div>
+                      <div className="text-base font-bold text-blue-300 mt-0.5">{activeAnalysis.key_camelot ?? '—'}</div>
                     </div>
                     <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800/80">
                       <div className="text-[10px] text-slate-400 uppercase font-semibold">Tempo</div>
-                      <div className="text-base font-bold text-purple-300 mt-0.5">{activeAnalysis.bpm} BPM</div>
+                      <div className="text-base font-bold text-purple-300 mt-0.5">{activeAnalysis.bpm ?? '—'} BPM</div>
                     </div>
                   </div>
                 )}
@@ -281,8 +282,8 @@ function App() {
                       <div className="text-[11px] text-blue-300 uppercase font-bold tracking-wider mb-1">
                         Camelot Key
                       </div>
-                      <div className="text-3xl font-extrabold text-white">{activeAnalysis.key_camelot}</div>
-                      <div className="text-[11px] text-slate-400 mt-1 truncate">{activeAnalysis.key_standard}</div>
+                      <div className="text-3xl font-extrabold text-white">{activeAnalysis.key_camelot ?? '—'}</div>
+                      <div className="text-[11px] text-slate-400 mt-1 truncate">{activeAnalysis.key_standard ?? 'Key engine failed'}</div>
                     </div>
 
                     {/* BPM */}
@@ -290,9 +291,9 @@ function App() {
                       <div className="text-[11px] text-purple-300 uppercase font-bold tracking-wider mb-1">
                         BPM (Tempo)
                       </div>
-                      <div className="text-3xl font-extrabold text-white">{activeAnalysis.bpm}</div>
+                      <div className="text-3xl font-extrabold text-white">{activeAnalysis.bpm ?? '—'}</div>
                       <div className="text-[11px] text-slate-400 mt-1">
-                        {activeAnalysis.bpm_confidence ? `${Math.round(activeAnalysis.bpm_confidence * 100)}% conf` : 'BeatNet Offline'}
+                        {activeAnalysis.bpm_confidence != null ? `${Math.round(activeAnalysis.bpm_confidence * 100)}% conf` : 'BPM engine failed'}
                       </div>
                     </div>
 
@@ -301,9 +302,9 @@ function App() {
                       <div className="text-[11px] text-slate-400 uppercase font-bold tracking-wider mb-1">
                         Standard Key
                       </div>
-                      <div className="text-lg font-bold text-white mt-1 truncate">{activeAnalysis.key_standard}</div>
+                      <div className="text-lg font-bold text-white mt-1 truncate">{activeAnalysis.key_standard ?? '—'}</div>
                       <div className="text-[11px] text-slate-400 mt-1">
-                        {activeAnalysis.key_confidence ? `${Math.round(activeAnalysis.key_confidence * 100)}% conf` : 'KeyNet'}
+                        {activeAnalysis.key_confidence != null ? `${Math.round(activeAnalysis.key_confidence * 100)}% conf` : 'Key engine failed'}
                       </div>
                     </div>
 
@@ -326,6 +327,27 @@ function App() {
                     <p className="text-sm font-semibold text-slate-300">
                       Analyzing audio with AI models (BeatNet, MusicalKeyCNN, Madmom, Structure, Quality)...
                     </p>
+                  </div>
+                )}
+
+                {activeAnalysis?.engine_errors && Object.keys(activeAnalysis.engine_errors).length > 0 && (
+                  <div role="alert" className="flex items-start gap-3 p-4 rounded-xl border border-amber-500/40 bg-amber-950/30 text-amber-200 text-sm">
+                    <span aria-hidden>⚠</span>
+                    <div className="flex-1">
+                      <p className="font-semibold">
+                        {Object.keys(activeAnalysis.engine_errors).join(', ')} analysis failed - values shown as “—” are not guesses.
+                      </p>
+                      <p className="text-xs text-amber-300/80 mt-0.5">
+                        Check the service status badge, then use Re-analyze.
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleReanalyze}
+                      disabled={isAnalyzing}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40"
+                    >
+                      Retry
+                    </button>
                   </div>
                 )}
 
@@ -354,9 +376,9 @@ function App() {
                 {activeTitle && (
                   <PitchTimeStretch
                     filename={activeTitle}
-                    detectedBpm={activeAnalysis?.bpm}
-                    detectedKeyStandard={activeAnalysis?.key_standard}
-                    detectedKeyCamelot={activeAnalysis?.key_camelot}
+                    detectedBpm={activeAnalysis?.bpm ?? undefined}
+                    detectedKeyStandard={activeAnalysis?.key_standard ?? undefined}
+                    detectedKeyCamelot={activeAnalysis?.key_camelot ?? undefined}
                   />
                 )}
 
@@ -417,6 +439,7 @@ function App() {
         </footer>
 
         <ToastContainer />
+        <ApiKeyDialog />
       </div>
     </div>
   );

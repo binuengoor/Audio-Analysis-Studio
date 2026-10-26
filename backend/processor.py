@@ -14,6 +14,44 @@ from config import (
     logger,
 )
 
+WORKER_ERROR_KEY = "__error__"
+
+
+class EngineUnavailableError(RuntimeError):
+    """Raised by single-engine analyses when the backing worker fails."""
+
+    def __init__(self, engine: str, detail: str):
+        super().__init__(f"{engine} engine failed: {detail}")
+        self.engine = engine
+
+
+def worker_error(res: Any) -> Optional[str]:
+    """Returns the failure message recorded by `_call_worker`, or None if the worker responded."""
+    return res.get(WORKER_ERROR_KEY) if isinstance(res, dict) else None
+
+
+def _opt_float(res: Dict[str, Any], key: str) -> Optional[float]:
+    """Reads a numeric field from a worker response; missing or failed workers yield None, never a guess."""
+    value = res.get(key) if isinstance(res, dict) else None
+    return float(value) if value is not None else None
+
+
+def _key_fields(res: Dict[str, Any]) -> Dict[str, Any]:
+    if worker_error(res) or not res:
+        return {"key_standard": None, "key_camelot": None, "key_confidence": None}
+    return {
+        "key_standard": res.get("key_standard"),
+        "key_camelot": res.get("key_camelot", res.get("key")),
+        "key_confidence": _opt_float(res, "key_confidence"),
+    }
+
+
+def _bpm_fields(res: Dict[str, Any]) -> Dict[str, Any]:
+    if worker_error(res):
+        return {"bpm": None, "bpm_confidence": None}
+    return {"bpm": _opt_float(res, "bpm"), "bpm_confidence": _opt_float(res, "bpm_confidence")}
+
+
 class BatchProcessor:
     def __init__(self, upload_dir: str):
         self.upload_dir = upload_dir
@@ -50,7 +88,7 @@ class BatchProcessor:
             return response.json()
         except Exception as e:
             logger.warning("Error calling worker at %s for file %s: %s", endpoint, file_path, e)
-            return {}
+            return {WORKER_ERROR_KEY: str(e) or e.__class__.__name__}
 
     async def analyze_file_microservices(self, file_path: str, filename: str = "") -> dict:
         """
@@ -72,17 +110,24 @@ class BatchProcessor:
             bpm_task, key_task, chord_task, quality_task, structure_task
         )
 
-        # 1. Parse BPM Worker Response
-        bpm = float(bpm_res.get("bpm", 120.0))
-        bpm_confidence = float(bpm_res.get("bpm_confidence", 0.9))
+        # 1-2. Parse BPM and Key worker responses (None when the engine failed)
+        bpm_fields = _bpm_fields(bpm_res)
+        key_fields = _key_fields(key_res)
 
-        # 2. Parse Key Worker Response
-        key_camelot = str(key_res.get("key_camelot", key_res.get("key", "8A")))
-        key_standard = str(key_res.get("key_standard", "A minor"))
-        key_confidence = float(key_res.get("key_confidence", 0.95))
+        engine_errors: Dict[str, str] = {
+            name: err
+            for name, res in (
+                ("bpm", bpm_res),
+                ("key", key_res),
+                ("chords", chord_res),
+                ("quality", quality_res),
+                ("structure", structure_res),
+            )
+            if (err := worker_error(res))
+        }
 
         # 3. Parse Chord Worker Response
-        raw_chords = chord_res.get("chords", chord_res if isinstance(chord_res, list) else [])
+        raw_chords = chord_res.get("chords", [])
         chords: List[Dict[str, Any]] = []
         if isinstance(raw_chords, list):
             for c in raw_chords:
@@ -95,7 +140,7 @@ class BatchProcessor:
 
         # 4. Parse Quality Worker Response
         quality = None
-        if quality_res and "container" in quality_res:
+        if isinstance(quality_res, dict) and "container" in quality_res:
             quality = quality_res
 
         # 5. Parse Structure Worker Response (Segments)
@@ -114,22 +159,26 @@ class BatchProcessor:
         # 6. Get Duration
         duration = get_audio_duration(file_path)
 
-        # 7. ID3 & Audio Metadata Writing via mutagen
-        write_audio_metadata(file_path, bpm, key_camelot, key_standard)
+        # 7. ID3 & Audio Metadata Writing via mutagen (only with values the engines actually produced)
+        if bpm_fields["bpm"] is not None or key_fields["key_camelot"]:
+            write_audio_metadata(
+                file_path,
+                bpm_fields["bpm"] or 0.0,
+                key_fields["key_camelot"] or "",
+                key_fields["key_standard"] or "",
+            )
 
         # 8. Aggregate Response
         clean_filename = filename or os.path.basename(file_path)
         result = {
             "filename": clean_filename,
-            "bpm": bpm,
-            "bpm_confidence": bpm_confidence,
-            "key_standard": key_standard,
-            "key_camelot": key_camelot,
-            "key_confidence": key_confidence,
+            **bpm_fields,
+            **key_fields,
             "duration": duration,
             "chords": chords,
             "quality": quality,
-            "segments": segments
+            "segments": segments,
+            "engine_errors": engine_errors,
         }
         return result
 
@@ -143,21 +192,16 @@ class BatchProcessor:
         key_task = self._call_worker(client, KEY_WORKER_URL, file_path)
         bpm_res, key_res = await asyncio.gather(bpm_task, key_task)
 
-        bpm = float(bpm_res.get("bpm", 120.0))
-        bpm_confidence = float(bpm_res.get("bpm_confidence", 0.9))
-        key_camelot = str(key_res.get("key_camelot", key_res.get("key", "8A")))
-        key_standard = str(key_res.get("key_standard", "A minor"))
-        key_confidence = float(key_res.get("key_confidence", 0.95))
         duration = get_audio_duration(file_path)
 
         return {
             "filename": filename or os.path.basename(file_path),
-            "bpm": bpm,
-            "bpm_confidence": bpm_confidence,
-            "key_standard": key_standard,
-            "key_camelot": key_camelot,
-            "key_confidence": key_confidence,
+            **_bpm_fields(bpm_res),
+            **_key_fields(key_res),
             "duration_seconds": duration,
+            "engine_errors": {
+                name: err for name, res in (("bpm", bpm_res), ("key", key_res)) if (err := worker_error(res))
+            },
         }
 
     async def analyze_bpm_only(self, file_path: str, filename: str = "") -> dict:
@@ -167,11 +211,12 @@ class BatchProcessor:
 
         client = await self.get_http_client()
         bpm_res = await self._call_worker(client, BPM_WORKER_URL, file_path)
+        if err := worker_error(bpm_res):
+            raise EngineUnavailableError("bpm", err)
 
         return {
             "filename": filename or os.path.basename(file_path),
-            "bpm": float(bpm_res.get("bpm", 120.0)),
-            "bpm_confidence": float(bpm_res.get("bpm_confidence", 0.9)),
+            **_bpm_fields(bpm_res),
         }
 
     async def analyze_key_only(self, file_path: str, filename: str = "") -> dict:
@@ -181,12 +226,12 @@ class BatchProcessor:
 
         client = await self.get_http_client()
         key_res = await self._call_worker(client, KEY_WORKER_URL, file_path)
+        if err := worker_error(key_res):
+            raise EngineUnavailableError("key", err)
 
         return {
             "filename": filename or os.path.basename(file_path),
-            "key_standard": str(key_res.get("key_standard", "A minor")),
-            "key_camelot": str(key_res.get("key_camelot", key_res.get("key", "8A"))),
-            "key_confidence": float(key_res.get("key_confidence", 0.95)),
+            **_key_fields(key_res),
         }
 
     async def analyze_structure_only(self, file_path: str, filename: str = "") -> dict:
@@ -196,6 +241,8 @@ class BatchProcessor:
 
         client = await self.get_http_client()
         structure_res = await self._call_worker(client, STRUCTURE_WORKER_URL, file_path)
+        if err := worker_error(structure_res):
+            raise EngineUnavailableError("structure", err)
 
         raw_segments = structure_res.get("segments", []) if isinstance(structure_res, dict) else []
         segments = []
@@ -223,8 +270,10 @@ class BatchProcessor:
 
         client = await self.get_http_client()
         chord_res = await self._call_worker(client, CHORD_WORKER_URL, file_path)
+        if err := worker_error(chord_res):
+            raise EngineUnavailableError("chords", err)
 
-        raw_chords = chord_res.get("chords", chord_res if isinstance(chord_res, list) else [])
+        raw_chords = chord_res.get("chords", [])
         chords = []
         if isinstance(raw_chords, list):
             for c in raw_chords:
@@ -249,6 +298,8 @@ class BatchProcessor:
 
         client = await self.get_http_client()
         quality_res = await self._call_worker(client, QUALITY_WORKER_URL, file_path)
+        if err := worker_error(quality_res):
+            raise EngineUnavailableError("quality", err)
 
         # Cleanup generated spectrogram image from disk if created by worker
         if quality_res and "spectrogram_image_path" in quality_res:
@@ -310,6 +361,7 @@ class BatchProcessor:
             "key_standard": res.get("key_standard"),
             "key_camelot": res.get("key_camelot"),
             "key_confidence": res.get("key_confidence"),
+            "engine_errors": res.get("engine_errors", {}),
             "duration_seconds": res.get("duration", 0.0),
             "chords": res.get("chords", []),
             "quality": quality_data,

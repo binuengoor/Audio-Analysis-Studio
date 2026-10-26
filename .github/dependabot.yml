@@ -65,3 +65,50 @@ updates:
     directory: "/frontend"
     schedule:
       interval: "monthly"
+
+  - package-ecosystem: "pip"
+    directory: "/backend/workers/downloader_worker"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "pip"
+    directory: "/backend/workers/stretch_worker"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "docker"
+    directory: "/backend/workers/bpm_worker"
+    schedule:
+      interval: "monthly"
+
+  - package-ecosystem: "docker"
+    directory: "/backend/workers/key_worker"
+    schedule:
+      interval: "monthly"
+
+  - package-ecosystem: "docker"
+    directory: "/backend/workers/chord_worker"
+    schedule:
+      interval: "monthly"
+
+  - package-ecosystem: "docker"
+    directory: "/backend/workers/quality_worker"
+    schedule:
+      interval: "monthly"
+
+  - package-ecosystem: "docker"
+    directory: "/backend/workers/structure_worker"
+    schedule:
+      interval: "monthly"
+
+  - package-ecosystem: "docker"
+    directory: "/backend/workers/downloader_worker"
+    schedule:
+      interval: "monthly"
+
+  - package-ecosystem: "docker"
+    directory: "/backend/workers/stretch_worker"
+    schedule:
+      interval: "monthly"

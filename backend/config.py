@@ -37,7 +37,7 @@ STRETCH_WORKER_URL: str = os.getenv("STRETCH_WORKER_URL", "http://stretch-worker
 REDIS_URL: str = os.getenv("REDIS_URL", "redis://redis:6379/0")
 
 # --- Security & Rate Limiting ---
-MAX_FILE_SIZE_MB: int = int(os.getenv("MAX_FILE_SIZE_MB", "100"))
+MAX_FILE_SIZE_MB: int = int(os.getenv("MAX_FILE_SIZE_MB", "500"))
 
 def get_configured_api_keys() -> Set[str]:
     """Dynamically reads configured API keys from environment."""

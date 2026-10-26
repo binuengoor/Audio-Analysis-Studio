@@ -1,7 +1,7 @@
 import time
 import asyncio
 from typing import Dict, Any
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 import httpx
 
 from config import (
@@ -15,6 +15,7 @@ from config import (
     REDIS_URL,
     logger,
 )
+from auth import verify_api_key
 from models import DownloaderVersionResponse, DownloaderUpdateResponse
 
 router = APIRouter(tags=["Engine Management"])
@@ -127,7 +128,7 @@ async def get_all_services_health():
     }
 
 
-@router.get("/api/downloader/version", response_model=DownloaderVersionResponse)
+@router.get("/api/downloader/version", response_model=DownloaderVersionResponse, dependencies=[Depends(verify_api_key)])
 async def get_downloader_engine_version():
     """Returns the current yt-dlp version, FFmpeg version, and cookies status from the downloader worker."""
     try:
@@ -140,7 +141,7 @@ async def get_downloader_engine_version():
         raise HTTPException(status_code=503, detail=f"Downloader microservice unreachable: {str(e)}")
 
 
-@router.post("/api/downloader/update", response_model=DownloaderUpdateResponse)
+@router.post("/api/downloader/update", response_model=DownloaderUpdateResponse, dependencies=[Depends(verify_api_key)])
 async def update_downloader_engine():
     """Triggers in-container upgrade of yt-dlp to hotfix any YouTube extractor changes."""
     try:
@@ -153,7 +154,7 @@ async def update_downloader_engine():
         raise HTTPException(status_code=503, detail=f"Downloader microservice unreachable: {str(e)}")
 
 
-@router.get("/api/stretch/version")
+@router.get("/api/stretch/version", dependencies=[Depends(verify_api_key)])
 async def get_stretch_engine_version():
     """Returns the Rubber Band Library engine status and version from the stretch worker."""
     try:

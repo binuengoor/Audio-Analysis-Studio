@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { AudioFile, AnalysisResult, LibraryEntry, ToastMessage } from '../types';
-import { buildBackendUrl } from '../config';
+import { apiFetch, buildFileUrl } from '../config';
 
 const activePollIntervals = new Set<ReturnType<typeof setInterval>>();
 
@@ -40,7 +40,7 @@ interface AppState {
   importAudioFromUrl: (url: string, audioFormat?: string) => Promise<void>;
   updateFileStatus: (id: string, status: AudioFile['status']) => void;
   pollBatchStatus: () => Promise<void>;
-  processOutput: (filename: string, pattern: string, bpm: number, key: string, camelot: string) => Promise<void>;
+  processOutput: (filename: string, pattern: string, bpm: number | null, key: string | null, camelot: string | null) => Promise<void>;
   deleteInput: (id: string) => Promise<void>;
   deleteOutput: (id: string) => Promise<void>;
   deleteEntry: (id: string) => Promise<void>;
@@ -77,7 +77,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
 
   fetchLibrary: async () => {
     try {
-      const response = await fetch(buildBackendUrl('/api/library'));
+      const response = await apiFetch('/api/library');
       if (!response.ok) throw new Error('Failed to fetch library');
       const newLibrary: LibraryEntry[] = await response.json();
 
@@ -94,9 +94,9 @@ export const useAudioStore = create<AppState>((set, get) => ({
         const activeAnalysis = currentActive?.analysis ?? state.activeAnalysis;
         const newAudioUrl = currentActive 
           ? (currentActive.output_path 
-              ? buildBackendUrl(`/files/output/${encodeURIComponent(currentActive.output_path)}`)
+              ? buildFileUrl(`/files/output/${encodeURIComponent(currentActive.output_path)}`)
               : currentActive.input_path 
-                ? buildBackendUrl(`/files/input/${encodeURIComponent(currentActive.input_path)}`)
+                ? buildFileUrl(`/files/input/${encodeURIComponent(currentActive.input_path)}`)
                 : null)
           : state.activeAudioUrl;
 
@@ -121,9 +121,9 @@ export const useAudioStore = create<AppState>((set, get) => ({
 
   selectTrack: (entry: LibraryEntry) => {
     const audioUrl = entry.output_path 
-      ? buildBackendUrl(`/files/output/${encodeURIComponent(entry.output_path)}`)
+      ? buildFileUrl(`/files/output/${encodeURIComponent(entry.output_path)}`)
       : entry.input_path 
-        ? buildBackendUrl(`/files/input/${encodeURIComponent(entry.input_path)}`)
+        ? buildFileUrl(`/files/input/${encodeURIComponent(entry.input_path)}`)
         : null;
 
     const currentUrl = get().activeAudioUrl;
@@ -142,7 +142,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
   reanalyzeTrack: async (filename: string) => {
     set({ isAnalyzing: true });
     try {
-      const response = await fetch(buildBackendUrl('/api/reanalyze'), {
+      const response = await apiFetch('/api/reanalyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename }),
@@ -181,7 +181,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
       formData.append('file', file);
 
       try {
-        const uploadRes = await fetch(buildBackendUrl('/api/upload'), {
+        const uploadRes = await apiFetch('/api/upload', {
           method: 'POST',
           body: formData,
         });
@@ -223,7 +223,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
 
     // Trigger Celery asynchronous batch queue for all uploaded files
     try {
-      const batchRes = await fetch(buildBackendUrl('/api/analyze/batch'), {
+      const batchRes = await apiFetch('/api/analyze/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filenames }),
@@ -245,7 +245,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
       const pollInterval = setInterval(async () => {
         for (const jobId of Array.from(pendingJobIds)) {
           try {
-            const jobRes = await fetch(buildBackendUrl(`/api/jobs/${jobId}`));
+            const jobRes = await apiFetch(`/api/jobs/${jobId}`);
             if (jobRes.ok) {
               const jobData = await jobRes.json();
               if (jobData.status === 'SUCCESS') {
@@ -292,7 +292,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
   importAudioFromUrl: async (url: string, audioFormat: string = 'flac') => {
     set({ processing: true, isAnalyzing: true, progress: 10 });
     try {
-      const intakeRes = await fetch(buildBackendUrl('/api/intake/url'), {
+      const intakeRes = await apiFetch('/api/intake/url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -322,7 +322,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
 
       // Set preview / active state
       const audioUrl = entry.input_path
-        ? buildBackendUrl(`/files/input/${encodeURIComponent(entry.input_path)}`)
+        ? buildFileUrl(`/files/input/${encodeURIComponent(entry.input_path)}`)
         : null;
 
       set({
@@ -340,7 +340,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
         // Poll the Celery job until completion
         const pollJob = setInterval(async () => {
           try {
-            const jobRes = await fetch(buildBackendUrl(`/api/jobs/${jobId}`));
+            const jobRes = await apiFetch(`/api/jobs/${jobId}`);
             if (jobRes.ok) {
               const jobData = await jobRes.json();
               if (jobData.status === 'SUCCESS') {
@@ -388,7 +388,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
 
   pollBatchStatus: async () => {
     try {
-      const response = await fetch(buildBackendUrl('/api/status'));
+      const response = await apiFetch('/api/status');
       if (!response.ok) throw new Error('Failed to fetch status');
       const status = await response.json();
       
@@ -419,9 +419,9 @@ export const useAudioStore = create<AppState>((set, get) => ({
     }
   },
 
-  processOutput: async (filename: string, pattern: string, bpm: number, key: string, camelot: string) => {
+  processOutput: async (filename: string, pattern: string, bpm: number | null, key: string | null, camelot: string | null) => {
     try {
-      const response = await fetch(buildBackendUrl('/api/process'), {
+      const response = await apiFetch('/api/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -447,7 +447,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
 
   deleteInput: async (id: string) => {
     try {
-      const res = await fetch(buildBackendUrl(`/api/library/${id}/input`), { method: 'DELETE' });
+      const res = await apiFetch(`/api/library/${id}/input`, { method: 'DELETE' });
       if (!res.ok) throw new Error(`Failed with status ${res.status}`);
       await get().fetchLibrary();
       get().showToast('Input file deleted', 'info');
@@ -460,7 +460,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
 
   deleteOutput: async (id: string) => {
     try {
-      const res = await fetch(buildBackendUrl(`/api/library/${id}/output`), { method: 'DELETE' });
+      const res = await apiFetch(`/api/library/${id}/output`, { method: 'DELETE' });
       if (!res.ok) throw new Error(`Failed with status ${res.status}`);
       await get().fetchLibrary();
       get().showToast('Output file deleted', 'info');
@@ -477,7 +477,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
       if (current && get().activeEntryId === id) {
         revokeUrlIfBlob(get().activeAudioUrl);
       }
-      const res = await fetch(buildBackendUrl(`/api/library/${id}`), { method: 'DELETE' });
+      const res = await apiFetch(`/api/library/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error(`Failed with status ${res.status}`);
       await get().fetchLibrary();
       get().showToast('Library entry deleted', 'info');
@@ -492,7 +492,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
     try {
       stopAllPolling();
       revokeUrlIfBlob(get().activeAudioUrl);
-      const response = await fetch(buildBackendUrl('/api/library'), {
+      const response = await apiFetch('/api/library', {
         method: 'DELETE',
       });
       if (!response.ok) throw new Error('Failed to clear library');

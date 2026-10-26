@@ -1,5 +1,7 @@
+import hashlib
 import os
 import shutil
+import uuid
 from typing import List, Optional
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from fastapi.responses import FileResponse
@@ -11,10 +13,11 @@ from config import (
     INPUT_DIR,
     OUTPUT_DIR,
     DOWNLOADER_URL,
+    MAX_FILE_SIZE_MB,
     STRETCH_WORKER_URL,
     logger,
 )
-from utils import sanitize_filename, resolve_audio_file_path
+from utils import sanitize_filename, resolve_audio_file_path, unique_upload_name
 from models import (
     AnalysisResult,
     AnalyzeRequest,
@@ -225,34 +228,58 @@ async def upload_audio(
     file: UploadFile = File(...),
     library: LibraryManager = Depends(get_library),
 ):
+    """Stores an upload in the input dir, enforcing MAX_FILE_SIZE_MB and never overwriting a different file."""
+    tmp_path = os.path.join(INPUT_DIR, f".upload_{uuid.uuid4().hex}.part")
     try:
         raw_name = file.filename or "upload.wav"
         safe_filename = sanitize_filename(raw_name, fallback="upload.wav")
-        file_path = os.path.join(INPUT_DIR, safe_filename)
+        max_bytes = MAX_FILE_SIZE_MB * 1024 * 1024
 
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        digest = hashlib.sha256()
+        size = 0
+        with open(tmp_path, "wb") as buffer:
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > max_bytes:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"File exceeds the {MAX_FILE_SIZE_MB} MB upload limit (set MAX_FILE_SIZE_MB to raise it).",
+                    )
+                digest.update(chunk)
+                buffer.write(chunk)
+        if size == 0:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
-        file_size = os.path.getsize(file_path)
-        logger.info("Saved upload %s (%d bytes)", safe_filename, file_size)
-
-        entry = library.get_entry_by_filename(safe_filename)
-        if not entry:
-            entry = library.add_entry(safe_filename)
+        final_name = unique_upload_name(INPUT_DIR, safe_filename, digest.hexdigest())
+        file_path = os.path.join(INPUT_DIR, final_name)
+        if os.path.exists(file_path):
+            os.remove(tmp_path)  # identical content already stored
         else:
-            entry.input_path = safe_filename
+            os.replace(tmp_path, file_path)
+        logger.info("Saved upload %s (%d bytes)", final_name, size)
+
+        entry = library.get_entry_by_filename(final_name)
+        if not entry:
+            entry = library.add_entry(final_name)
+        else:
+            entry.input_path = final_name
             entry.status = "uploaded"
             with library._get_connection() as conn:
                 conn.execute(
                     "UPDATE library SET input_path = ?, status = 'uploaded' WHERE id = ?;",
-                    (safe_filename, entry.id),
+                    (final_name, entry.id),
                 )
                 conn.commit()
 
         return entry
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Upload error: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 
 @router.post("/api/analyze", response_model=AnalysisResult)

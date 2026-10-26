@@ -46,6 +46,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        navigateFallbackDenylist: [/^\/api\//, /^\/files\//, /^\/docs/, /^\/redoc/, /^\/openapi\.json/],
         runtimeCaching: [
           {
             urlPattern: ({ request }) => request.destination === 'image',

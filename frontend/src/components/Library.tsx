@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAudioStore } from '../store/useAudioStore';
 import { LibraryEntry } from '../types';
-import { buildBackendUrl } from '../config';
+import { buildFileUrl } from '../config';
 
 export const Library: React.FC = () => {
   const {
@@ -16,7 +16,7 @@ export const Library: React.FC = () => {
 
   const handleDownload = (e: React.MouseEvent, type: 'input' | 'output', path: string) => {
     e.stopPropagation();
-    const url = buildBackendUrl(`/api/download/${type}/${encodeURIComponent(path)}`);
+    const url = buildFileUrl(`/api/download/${type}/${encodeURIComponent(path)}`);
     const a = document.createElement('a');
     a.href = url;
     a.download = path;
@@ -138,14 +138,22 @@ export const Library: React.FC = () => {
                       <div className="space-y-1.5">
                         <div className="flex items-center gap-2">
                           <span className="px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-200 font-bold text-xs border border-blue-500/30">
-                            {entry.analysis.key_camelot}
+                            {entry.analysis.key_camelot ?? '—'}
                           </span>
                           <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-200 font-bold text-xs border border-purple-500/30">
-                            {entry.analysis.bpm} BPM
+                            {entry.analysis.bpm ?? '—'} BPM
                           </span>
                           <span className="text-xs text-slate-400">
-                            {entry.analysis.key_standard}
+                            {entry.analysis.key_standard ?? ''}
                           </span>
+                          {entry.analysis.engine_errors && Object.keys(entry.analysis.engine_errors).length > 0 && (
+                            <span
+                              className="text-[10px] bg-amber-950/60 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/30"
+                              title={Object.entries(entry.analysis.engine_errors).map(([k, v]) => `${k}: ${v}`).join('\n')}
+                            >
+                              ⚠ {Object.keys(entry.analysis.engine_errors).join(', ')} failed
+                            </span>
+                          )}
                           {entry.analysis.chords && entry.analysis.chords.length > 0 && (
                             <span className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded border border-slate-700">
                               {entry.analysis.chords.length} chords

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { buildBackendUrl } from '../config';
+import { apiFetch, buildFileUrl } from '../config';
 import { useAudioStore } from '../store/useAudioStore';
 import { transposeKey } from '../utils/musicTheory';
 import { useAudioPreview } from '../hooks/useAudioPreview';
@@ -110,7 +110,7 @@ export const PitchTimeStretch: React.FC<PitchTimeStretchProps> = ({
 
     setIsProcessing(true);
     try {
-      const resp = await fetch(buildBackendUrl('/api/stretch'), {
+      const resp = await apiFetch('/api/stretch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -136,7 +136,7 @@ export const PitchTimeStretch: React.FC<PitchTimeStretchProps> = ({
       }
 
       const data = await resp.json();
-      const outputUrl = buildBackendUrl(data.output_url);
+      const outputUrl = buildFileUrl(data.output_url);
       setResultAudioUrl(outputUrl);
       setResultFilename(data.output_filename);
       setResultDuration(data.duration);

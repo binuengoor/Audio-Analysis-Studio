@@ -39,12 +39,14 @@ export interface SectionSegment {
 
 export interface AnalysisResult {
   filename?: string;
-  bpm: number;
-  bpm_confidence: number;
-  key_standard: string;
-  key_camelot: string;
-  key_confidence: number;
+  /** null when the BPM/key engine failed; see engine_errors */
+  bpm: number | null;
+  bpm_confidence: number | null;
+  key_standard: string | null;
+  key_camelot: string | null;
+  key_confidence: number | null;
   duration: number;
+  engine_errors?: Record<string, string>;
   chords?: ChordSegment[];
   quality?: QualityResult;
   segments?: SectionSegment[];

@@ -5,6 +5,9 @@ import glob
 import logging
 import subprocess
 import importlib
+import ipaddress
+import socket
+import urllib.parse
 from typing import Optional
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel
@@ -26,7 +29,33 @@ SHARED_DATA_DIR = os.getenv("SHARED_DATA_DIR", DEFAULT_DATA_DIR)
 INPUT_DIR = os.path.join(SHARED_DATA_DIR, "input")
 COOKIES_FILE = os.getenv("COOKIES_FILE", "/app/cookies/cookies.txt")
 
+ALLOW_PRIVATE_URLS = os.getenv("ALLOW_PRIVATE_URLS", "false").lower() in ("1", "true", "yes")
+
 os.makedirs(INPUT_DIR, exist_ok=True)
+
+
+def assert_public_url(url: str) -> None:
+    """
+    SSRF guard: only http(s) URLs whose host resolves exclusively to public addresses are accepted,
+    so the downloader cannot be pointed at redis, other workers, or cloud metadata endpoints.
+    Set ALLOW_PRIVATE_URLS=true to fetch from LAN hosts (e.g. a self-hosted music server).
+    """
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise HTTPException(status_code=400, detail="Only http(s) URLs are supported.")
+    if ALLOW_PRIVATE_URLS:
+        return
+    try:
+        infos = socket.getaddrinfo(parsed.hostname, parsed.port or 443, proto=socket.IPPROTO_TCP)
+    except socket.gaierror:
+        raise HTTPException(status_code=400, detail=f"Could not resolve host '{parsed.hostname}'.")
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0].split("%")[0])
+        if not ip.is_global:
+            raise HTTPException(
+                status_code=400,
+                detail="URL resolves to a private or reserved address (set ALLOW_PRIVATE_URLS=true to allow).",
+            )
 
 
 class DownloadRequest(BaseModel):
@@ -222,6 +251,7 @@ def download_audio(req: DownloadRequest):
     url = req.url.strip()
     if not url:
         raise HTTPException(status_code=400, detail="URL cannot be empty")
+    assert_public_url(url)
 
     import yt_dlp
 
@@ -289,6 +319,7 @@ def get_track_info(req: InfoRequest):
     url = req.url.strip()
     if not url:
         raise HTTPException(status_code=400, detail="URL cannot be empty")
+    assert_public_url(url)
 
     import yt_dlp
 

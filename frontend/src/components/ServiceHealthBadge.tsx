@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { buildBackendUrl } from '../config';
+import { apiFetch } from '../config';
 
 interface ServiceStatus {
   name: string;
@@ -28,7 +28,7 @@ export const ServiceHealthBadge: React.FC = () => {
   const fetchHealth = async () => {
     setIsLoading(true);
     try {
-      const resp = await fetch(buildBackendUrl('/api/health/services'));
+      const resp = await apiFetch('/api/health/services');
       if (resp.ok) {
         const data: HealthResponse = await resp.json();
         setHealth(data);

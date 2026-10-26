@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -12,7 +13,8 @@ from config import (
     ensure_directories,
     logger,
 )
-from processor import BatchProcessor
+from auth import verify_api_key, extract_request_key, is_valid_key
+from processor import BatchProcessor, EngineUnavailableError
 from library import LibraryManager
 from api_v1 import router as api_v1_router, set_processor as set_v1_processor
 from routers.studio import (
@@ -88,7 +90,21 @@ X-API-Key: your_secret_api_key
     lifespan=lifespan,
 )
 
-# Setup CORS with configuration
+@app.exception_handler(EngineUnavailableError)
+async def engine_unavailable_handler(_: Request, exc: EngineUnavailableError):
+    return JSONResponse(status_code=502, content={"detail": str(exc), "engine": exc.engine})
+
+
+@app.middleware("http")
+async def protect_media_files(request: Request, call_next):
+    """Applies API-key auth to /files/* (browsers can't send headers from <audio>/<img>, so `?api_key=` is accepted)."""
+    if request.url.path.startswith("/files/") and request.method != "OPTIONS":
+        if not is_valid_key(extract_request_key(request.headers, request.query_params)):
+            return JSONResponse(status_code=401, content={"detail": "API Key required."})
+    return await call_next(request)
+
+
+# CORS is added last so it is the outermost layer and also decorates 401 responses from the media guard
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -103,7 +119,7 @@ app.mount("/files/output", StaticFiles(directory=OUTPUT_DIR), name="output_files
 
 # Mount Sub-Routers
 app.include_router(api_v1_router)
-app.include_router(studio_router)
+app.include_router(studio_router, dependencies=[Depends(verify_api_key)])
 app.include_router(system_router)
 
 

@@ -90,3 +90,23 @@ def resolve_audio_file_path(
             return candidate
 
     return None
+
+
+def unique_upload_name(directory: str, filename: str, content_sha256: str) -> str:
+    """
+    Returns `filename` if it is free or already holds identical content; otherwise
+    appends a short content hash so different uploads sharing a name never overwrite each other.
+    """
+    import hashlib
+
+    candidate = os.path.join(directory, filename)
+    if not os.path.exists(candidate):
+        return filename
+    existing = hashlib.sha256()
+    with open(candidate, "rb") as f:
+        while chunk := f.read(1024 * 1024):
+            existing.update(chunk)
+    if existing.hexdigest() == content_sha256:
+        return filename
+    base, ext = os.path.splitext(filename)
+    return f"{base}_{content_sha256[:8]}{ext}"

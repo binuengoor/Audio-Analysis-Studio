@@ -1,0 +1,8 @@
+# Extra packages the worker unit tests import (workers run in separate images in production)
+librosa
+soundfile
+pyloudnorm
+flac-detective
+matplotlib
+scikit-learn
+yt-dlp

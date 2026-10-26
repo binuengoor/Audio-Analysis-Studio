@@ -143,6 +143,8 @@ All images are continuously built and published to `ghcr.io`:
 * `ghcr.io/binuengoor/audio-analysis-studio-chord-worker:latest`
 * `ghcr.io/binuengoor/audio-analysis-studio-structure-worker:latest`
 * `ghcr.io/binuengoor/audio-analysis-studio-quality-worker:latest`
+* `ghcr.io/binuengoor/audio-analysis-studio-downloader-worker:latest`
+* `ghcr.io/binuengoor/audio-analysis-studio-stretch-worker:latest`
 
 To run prebuilt images without local compiling, uncomment the `image: ghcr.io/...` lines in `docker-compose.yml` and run:
 ```bash
@@ -159,7 +161,9 @@ docker compose up -d
 | `{OriginalName}` | Original uploaded filename (without extension) | `My Song` |
 | `{Key}` | Standard musical key | `C# minor` / `F major` |
 | `{Camelot}` | Camelot wheel key | `12A` / `7B` |
-| `{BPM}` | Tempo in beats per minute | `125.0` |
+| `{BPM}` | Tempo in beats per minute (rounded to a whole number) | `125` |
+| `{Pitch}` | Applied pitch shift (pitch/stretch exports) | `+2st` |
+| `{Tempo}` | Applied tempo ratio (pitch/stretch exports) | `1.05x` |
 
 ---
 
@@ -168,23 +172,33 @@ docker compose up -d
 Audio Analysis Studio provides a high-throughput, headless REST API for third-party tools, DAWs, mobile apps, and batch analysis scripts.
 
 ### Interactive Documentation
-Interactive OpenAPI (Swagger) documentation is available at:
+When the stack is running:
 * **Swagger UI:** [http://localhost:8000/docs](http://localhost:8000/docs)
 * **ReDoc:** [http://localhost:8000/redoc](http://localhost:8000/redoc)
-
-### Interactive Swagger UI & OpenAPI Specs
-When the stack is running, explore and execute live API calls via interactive documentation:
-* **Interactive Swagger UI:** [http://localhost:8000/docs](http://localhost:8000/docs)
-* **ReDoc Documentation:** [http://localhost:8000/redoc](http://localhost:8000/redoc)
 * **OpenAPI 3.0 Schema:** [http://localhost:8000/openapi.json](http://localhost:8000/openapi.json)
-* **Complete Developer Guide & Examples:** 📖 [**`docs/API.md`**](docs/API.md)
+* **Developer guide & examples:** 📖 [**`docs/API.md`**](docs/API.md)
 
 ### Authentication (Optional & Cloud-Ready)
-* **Local Development (Default):** If `API_KEY` (or `API_KEYS`) is unset, authentication is disabled and all endpoints are open.
-* **Production / Cloud Deployment:** Set `API_KEY=your_secret_key` or `API_KEYS=key1,key2` in environment variables.
-* **Supported Headers:**
+* **Local development (default):** if `API_KEY` / `API_KEYS` are unset, authentication is disabled and every endpoint is open. Only run in this mode on a trusted network.
+* **Production / shared network:** set `API_KEY=your_secret_key` (or `API_KEYS=key1,key2`) in `.env`. The key is enforced on **every** gateway route — `/api/v1/*`, the studio/library endpoints, engine management, and `/files/*` media. Only `GET /`, `GET /api/health/services` and the docs remain open.
+* **Supported ways to send the key:**
   * `X-API-Key: your_secret_key`
   * `Authorization: Bearer your_secret_key`
+  * `?api_key=your_secret_key` on `GET` requests and `/files/*` (for `<audio>`/`<img>`/download links, which cannot set headers)
+* **Web UI:** when the server answers `401`, the UI asks for the key once and stores it in the browser.
+
+### Configuration
+
+Copy [`.env.example`](.env.example) to `.env`; `docker compose` picks it up automatically.
+
+| Variable | Default | Purpose |
+| :--- | :--- | :--- |
+| `API_KEY` / `API_KEYS` | *(empty = open)* | Require an API key on all gateway routes |
+| `ALLOWED_ORIGINS` | `*` | Comma-separated CORS origins |
+| `MAX_FILE_SIZE_MB` | `500` | Largest accepted upload |
+| `ALLOW_PRIVATE_URLS` | `false` | Let URL intake fetch from private/LAN addresses (blocked by default to prevent SSRF) |
+
+> **Analysis failures are explicit.** If an engine is down or errors, its fields come back as `null` with the reason in `engine_errors` (e.g. `{"bpm": "..."}`); the app never substitutes a guessed BPM/key, and nothing is written to ID3 tags from a failed engine. Single-engine v1 endpoints (`/analyze/bpm`, `/key`, …) return `502`.
 
 ### Public REST API Endpoints
 
@@ -243,7 +257,9 @@ When the stack is running, explore and execute live API calls via interactive do
 ## Running Automated Tests
 
 ```bash
+pip install -r backend/requirements.txt -r backend/requirements-test.txt
 pytest backend/tests/
+npm --prefix frontend ci && npm --prefix frontend test
 ```
 
 ---
