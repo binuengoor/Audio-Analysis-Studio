@@ -69,3 +69,10 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger("audio_studio")
+
+# --- Watch folder ---
+# Audio dropped into <data>/watch is moved to input and analysed automatically (off by default).
+WATCH_FOLDER_ENABLED: bool = os.getenv("WATCH_FOLDER", "false").lower() in ("1", "true", "yes")
+WATCH_DIR: str = os.path.join(SHARED_DATA_DIR, "watch")
+WATCH_INTERVAL_SECONDS: int = max(2, int(os.getenv("WATCH_INTERVAL_SECONDS", "10")))
+AUDIO_EXTENSIONS = {".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".oga", ".opus", ".aif", ".aiff"}

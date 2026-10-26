@@ -43,6 +43,11 @@ class LibraryManager:
                         status TEXT NOT NULL
                     );
                 """)
+                # Added after v1: content hash for duplicate detection (existing databases are migrated in place)
+                columns = {row["name"] for row in conn.execute("PRAGMA table_info(library);")}
+                if "content_hash" not in columns:
+                    conn.execute("ALTER TABLE library ADD COLUMN content_hash TEXT;")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_library_hash ON library(content_hash);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_library_filename ON library(filename);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_library_created ON library(created_at DESC);")
                 conn.commit()
@@ -197,6 +202,37 @@ class LibraryManager:
                 (analysis_str, id),
             )
             conn.commit()
+
+    def set_content_hash(self, id: str, content_hash: str):
+        with self._get_connection() as conn:
+            conn.execute("UPDATE library SET content_hash = ? WHERE id = ?;", (content_hash, id))
+            conn.commit()
+
+    def find_duplicate_groups(self, resolve_path) -> List[List[LibraryEntry]]:
+        """
+        Groups entries whose audio files are byte-identical. Hashes are computed lazily for entries
+        that have none yet (`resolve_path(entry) -> Optional[str]` locates the file) and cached.
+        """
+        import hashlib
+
+        with self._get_connection() as conn:
+            rows = conn.execute("SELECT * FROM library ORDER BY created_at ASC;").fetchall()
+        groups: dict = {}
+        for row in rows:
+            entry = self._row_to_entry(row)
+            content_hash = row["content_hash"]
+            if not content_hash:
+                path = resolve_path(entry)
+                if not path or not os.path.isfile(path):
+                    continue
+                digest = hashlib.sha256()
+                with open(path, "rb") as f:
+                    while chunk := f.read(1024 * 1024):
+                        digest.update(chunk)
+                content_hash = digest.hexdigest()
+                self.set_content_hash(entry.id, content_hash)
+            groups.setdefault(content_hash, []).append(entry)
+        return [g for g in groups.values() if len(g) > 1]
 
     def set_output(self, id: str, output_filename: str):
         with self._get_connection() as conn:

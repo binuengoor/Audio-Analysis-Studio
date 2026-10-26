@@ -262,6 +262,7 @@ async def upload_audio(
         entry = library.get_entry_by_filename(final_name)
         if not entry:
             entry = library.add_entry(final_name)
+            library.set_content_hash(entry.id, digest.hexdigest())
         else:
             entry.input_path = final_name
             entry.status = "uploaded"
@@ -459,6 +460,16 @@ def download_output(filename: str):
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(file_path, filename=safe_filename)
+
+
+@router.get("/api/library/duplicates", response_model=List[List[LibraryEntry]])
+def find_duplicates(library: LibraryManager = Depends(get_library)):
+    """Groups of library entries whose audio files are byte-identical (oldest first in each group)."""
+    def locate(entry: LibraryEntry) -> Optional[str]:
+        name = entry.input_path or entry.output_path
+        return resolve_audio_file_path(name) if name else None
+
+    return library.find_duplicate_groups(locate)
 
 
 @router.patch("/api/library/{id}/analysis", response_model=LibraryEntry)

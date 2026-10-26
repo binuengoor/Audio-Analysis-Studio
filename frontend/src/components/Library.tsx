@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAudioStore } from '../store/useAudioStore';
 import { LibraryEntry } from '../types';
-import { buildFileUrl } from '../config';
+import { apiFetch, buildFileUrl } from '../config';
 import { ALL_CAMELOT_KEYS, harmonicRelation } from '../utils/harmonic';
 import {
   EMPTY_FILTERS,
@@ -10,6 +10,7 @@ import {
   SortKey,
   filterAndSort,
   hasEngineErrors,
+  qualityRank,
 } from '../utils/libraryView';
 
 interface LibraryProps {
@@ -47,6 +48,41 @@ export const Library: React.FC<LibraryProps> = ({ searchInputRef }) => {
   const [sortKey, setSortKey] = useState<SortKey>('added');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [mixMode, setMixMode] = useState(false);
+  const [dupMode, setDupMode] = useState(false);
+  const [dupGroups, setDupGroups] = useState<LibraryEntry[][]>([]);
+  const [showExport, setShowExport] = useState(false);
+  const [pathPrefix, setPathPrefix] = useState(() => {
+    try {
+      return localStorage.getItem('aas.rekordboxPrefix') ?? '';
+    } catch {
+      return '';
+    }
+  });
+  const showToast = useAudioStore((s) => s.showToast);
+
+  // Duplicates are computed server-side by content hash; refresh whenever the mode is on and the library changes
+  useEffect(() => {
+    if (!dupMode) return;
+    let cancelled = false;
+    apiFetch('/api/library/duplicates')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((groups: LibraryEntry[][]) => !cancelled && setDupGroups(groups))
+      .catch(() => !cancelled && setDupGroups([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [dupMode, library]);
+
+  // In each duplicate group the best copy (highest quality, then oldest) is the one to keep
+  const dupInfo = useMemo(() => {
+    const info = new Map<string, { group: number; best: boolean }>();
+    dupGroups.forEach((group, gi) => {
+      const live = group.map((g) => library.find((e) => e.id === g.id)).filter(Boolean) as LibraryEntry[];
+      const best = [...live].sort((a, b) => qualityRank(b) - qualityRank(a) || a.created_at - b.created_at)[0];
+      live.forEach((e) => info.set(e.id, { group: gi, best: e.id === best?.id }));
+    });
+    return info;
+  }, [dupGroups, library]);
 
   const active = library.find((e) => e.id === activeEntryId) ?? null;
   const effectiveFilters: LibraryFilters = {
@@ -57,13 +93,36 @@ export const Library: React.FC<LibraryProps> = ({ searchInputRef }) => {
         : null,
   };
 
-  const rows = useMemo(
-    () => filterAndSort(library, effectiveFilters, sortKey, sortDir),
+  const rows = useMemo(() => {
+    const sorted = filterAndSort(library, effectiveFilters, sortKey, sortDir);
+    if (!dupMode) return sorted;
+    // keep duplicates together: order by group, best copy first
+    return sorted
+      .filter((e) => dupInfo.has(e.id))
+      .sort((a, b) => dupInfo.get(a.id)!.group - dupInfo.get(b.id)!.group || Number(dupInfo.get(b.id)!.best) - Number(dupInfo.get(a.id)!.best));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [library, filters, sortKey, sortDir, mixMode, activeEntryId, active?.analysis?.key_camelot, active?.analysis?.bpm]
-  );
+  }, [library, filters, sortKey, sortDir, mixMode, dupMode, dupInfo, activeEntryId, active?.analysis?.key_camelot, active?.analysis?.bpm]);
 
-  const isFiltered = JSON.stringify(filters) !== JSON.stringify(EMPTY_FILTERS) || mixMode;
+  const isFiltered = JSON.stringify(filters) !== JSON.stringify(EMPTY_FILTERS) || mixMode || dupMode;
+
+  const exportLibrary = (format: 'csv' | 'json' | 'rekordbox') => {
+    const params = new URLSearchParams({ format });
+    // export exactly what is on screen when a filter is active
+    if (rows.length !== library.length) params.set('ids', rows.map((r) => r.id).join(','));
+    if (format === 'rekordbox' && pathPrefix.trim()) params.set('path_prefix', pathPrefix.trim());
+    try {
+      localStorage.setItem('aas.rekordboxPrefix', pathPrefix.trim());
+    } catch {
+      /* storage unavailable */
+    }
+    const a = document.createElement('a');
+    a.href = buildFileUrl(`/api/export/library?${params.toString()}`);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setShowExport(false);
+    showToast(`Exporting ${rows.length} track${rows.length === 1 ? '' : 's'} as ${format === 'rekordbox' ? 'Rekordbox XML' : format.toUpperCase()}`, 'info');
+  };
 
   const toggleSort = (key: SortKey) => {
     if (key === sortKey) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
@@ -88,8 +147,8 @@ export const Library: React.FC<LibraryProps> = ({ searchInputRef }) => {
   const iconBtn = `p-1.5 rounded-md border transition-colors ${focusRing}`;
 
   return (
-    <section aria-label="Audio library" className="bg-slate-900/80 rounded-2xl border border-slate-800 shadow-xl overflow-hidden">
-      <div className="p-5 border-b border-slate-800 bg-slate-900/90 space-y-4">
+    <section aria-label="Audio library" className="bg-slate-900/80 rounded-2xl border border-slate-800 shadow-xl">
+      <div className="p-5 border-b border-slate-800 bg-slate-900/90 rounded-t-2xl space-y-4">
         <div className="flex justify-between items-center gap-3">
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
             Library
@@ -97,6 +156,45 @@ export const Library: React.FC<LibraryProps> = ({ searchInputRef }) => {
               {isFiltered ? `${rows.length} of ${library.length}` : library.length} {library.length === 1 ? 'track' : 'tracks'}
             </span>
           </h2>
+          <div className="flex items-center gap-2 relative">
+          {library.length > 0 && (
+            <>
+              <button
+                type="button"
+                aria-haspopup="true"
+                aria-expanded={showExport}
+                onClick={() => setShowExport(!showExport)}
+                className={`px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 rounded-lg text-xs font-semibold border border-slate-700 ${focusRing}`}
+              >
+                Export ▾
+              </button>
+              {showExport && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-9 z-40 w-72 bg-slate-950 border border-slate-700 rounded-xl p-3 shadow-2xl space-y-2"
+                  onKeyDown={(e) => e.key === 'Escape' && setShowExport(false)}
+                >
+                  <p className="text-[11px] text-slate-400">
+                    {rows.length === library.length ? 'Whole library' : `${rows.length} filtered tracks`} · analysed tracks only
+                  </p>
+                  <button role="menuitem" onClick={() => exportLibrary('csv')} className={`w-full text-left px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-sm ${focusRing}`}>CSV <span className="text-slate-500 text-xs">spreadsheet</span></button>
+                  <button role="menuitem" onClick={() => exportLibrary('json')} className={`w-full text-left px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-sm ${focusRing}`}>JSON <span className="text-slate-500 text-xs">full analysis</span></button>
+                  <div className="rounded-lg bg-slate-900 p-2 space-y-1.5">
+                    <button role="menuitem" onClick={() => exportLibrary('rekordbox')} className={`w-full text-left px-1 py-1 rounded text-sm ${focusRing}`}>Rekordbox XML <span className="text-slate-500 text-xs">BPM + key</span></button>
+                    <label htmlFor="rb-prefix" className="block text-[10px] uppercase text-slate-500">Folder of ./data on your DJ computer</label>
+                    <input
+                      id="rb-prefix"
+                      value={pathPrefix}
+                      onChange={(e) => setPathPrefix(e.target.value)}
+                      placeholder="/Users/me/Audio-Analysis-Studio/data"
+                      className={`${control} w-full font-mono`}
+                    />
+                    <p className="text-[10px] text-slate-500">Without it, track paths point inside the Docker container. Beat grids are not exported.</p>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
           {library.length > 0 && (
             <button
               onClick={() => {
@@ -107,6 +205,7 @@ export const Library: React.FC<LibraryProps> = ({ searchInputRef }) => {
               Clear library
             </button>
           )}
+          </div>
         </div>
 
         {library.length > 0 && (
@@ -154,8 +253,19 @@ export const Library: React.FC<LibraryProps> = ({ searchInputRef }) => {
             >
               ⚠ Needs attention
             </button>
+            <button
+              type="button"
+              aria-pressed={dupMode}
+              onClick={() => setDupMode(!dupMode)}
+              title="Byte-identical files, with the best copy marked"
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${focusRing} ${
+                dupMode ? 'bg-rose-500/20 text-rose-200 border-rose-400/50' : 'bg-slate-950 text-slate-300 border-slate-700 hover:border-slate-500'
+              }`}
+            >
+              ⧉ Duplicates{dupMode ? ` (${dupInfo.size})` : ''}
+            </button>
             {isFiltered && (
-              <button type="button" onClick={() => { setFilters(EMPTY_FILTERS); setMixMode(false); }} className={`text-xs text-slate-400 hover:text-white underline ${focusRing}`}>
+              <button type="button" onClick={() => { setFilters(EMPTY_FILTERS); setMixMode(false); setDupMode(false); }} className={`text-xs text-slate-400 hover:text-white underline ${focusRing}`}>
                 Reset
               </button>
             )}
@@ -163,7 +273,7 @@ export const Library: React.FC<LibraryProps> = ({ searchInputRef }) => {
         )}
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto rounded-b-2xl">
         <table className="min-w-full divide-y divide-slate-800 text-slate-200">
           <thead className="bg-slate-950/60">
             <tr>
@@ -230,6 +340,14 @@ export const Library: React.FC<LibraryProps> = ({ searchInputRef }) => {
                           </span>
                         )}
                         <span className="text-xs text-slate-400">{a.key_standard ?? ''}</span>
+                        {dupMode && dupInfo.get(entry.id) && (
+                          <span
+                            className={`text-[10px] px-1.5 py-0.5 rounded border ${dupInfo.get(entry.id)!.best ? 'bg-emerald-950/50 text-emerald-300 border-emerald-500/30' : 'bg-rose-950/50 text-rose-300 border-rose-500/30'}`}
+                            title={`Duplicate set ${dupInfo.get(entry.id)!.group + 1}`}
+                          >
+                            {dupInfo.get(entry.id)!.best ? 'keep' : 'dup'} #{dupInfo.get(entry.id)!.group + 1}
+                          </span>
+                        )}
                       </div>
                     ) : (
                       <span className="text-xs text-amber-400/80 animate-pulse">Analyzing…</span>
@@ -310,7 +428,7 @@ export const Library: React.FC<LibraryProps> = ({ searchInputRef }) => {
                   ) : (
                     <p className="text-sm">
                       No tracks match these filters.{' '}
-                      <button className={`underline text-slate-300 ${focusRing}`} onClick={() => { setFilters(EMPTY_FILTERS); setMixMode(false); }}>Reset filters</button>
+                      <button className={`underline text-slate-300 ${focusRing}`} onClick={() => { setFilters(EMPTY_FILTERS); setMixMode(false); setDupMode(false); }}>Reset filters</button>
                     </p>
                   )}
                 </td>

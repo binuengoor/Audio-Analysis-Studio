@@ -24,9 +24,11 @@ Status of the improvement plan from the project audit. Checked items are done.
 - [ ] Contrast audit of the 10-11 px helper text
 
 ## Phase 3 - Features
-- [ ] Batch/folder mode + watch folder
-- [ ] DJ export: Rekordbox XML, Traktor NML, CSV/JSON
-- [ ] Harmonic-mixing helper (compatible keys / BPM range)
-- [ ] Beat grid export + Beat This! evaluation
-- [ ] Stem separation (Demucs) worker
-- [ ] Duplicate / similarity search, tags & smart playlists
+- [x] Batch drops (existing) + watch folder (`WATCH_FOLDER=true`, `./data/watch`)
+- [x] Library export: CSV, JSON, Rekordbox XML (BPM + key; no beat grid)
+- [x] Harmonic-mixing helper ("Mixes well with", "Mixes with selected")
+- [x] Duplicate detection by content hash, best copy marked
+- [ ] Traktor NML export (needs verification against a real Traktor install)
+- [ ] Beat grid export + Beat This! evaluation (needs downbeat offsets from a new beat worker)
+- [ ] Stem separation (Demucs) worker (large model image; needs GPU/CPU sizing)
+- [ ] Tags, notes, ratings and smart playlists

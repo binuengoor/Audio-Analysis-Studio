@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, Request
 from fastapi.responses import JSONResponse
@@ -10,18 +11,22 @@ from config import (
     INPUT_DIR,
     OUTPUT_DIR,
     ALLOWED_ORIGINS,
+    WATCH_FOLDER_ENABLED,
     ensure_directories,
     logger,
 )
 from auth import verify_api_key, extract_request_key, is_valid_key
 from processor import BatchProcessor, EngineUnavailableError
 from library import LibraryManager
+from celery_tasks import analyze_audio_task
+from watcher import watch_loop
 from api_v1 import router as api_v1_router, set_processor as set_v1_processor
 from routers.studio import (
     router as studio_router,
     set_processor as set_studio_processor,
     set_library as set_studio_library,
 )
+from routers.library_export import router as export_router
 from routers.system import router as system_router
 
 # Instantiate and wire shared core engines
@@ -38,7 +43,20 @@ async def lifespan(app: FastAPI):
     """Manages application lifecycle, directory initialization, and connection pooling."""
     ensure_directories()
     logger.info("Audio Analysis Studio Gateway started")
+    watcher_task = None
+    if WATCH_FOLDER_ENABLED:
+        def enqueue(filename: str) -> None:
+            entry = library.get_entry_by_filename(filename)
+            if entry:
+                with library._get_connection() as conn:
+                    conn.execute("UPDATE library SET status = 'processing' WHERE id = ?;", (entry.id,))
+                    conn.commit()
+            analyze_audio_task.delay(filename)
+
+        watcher_task = asyncio.create_task(watch_loop(library, enqueue))
     yield
+    if watcher_task:
+        watcher_task.cancel()
     await processor.close()
     logger.info("Audio Analysis Studio Gateway shutdown complete")
 
@@ -120,6 +138,7 @@ app.mount("/files/output", StaticFiles(directory=OUTPUT_DIR), name="output_files
 # Mount Sub-Routers
 app.include_router(api_v1_router)
 app.include_router(studio_router, dependencies=[Depends(verify_api_key)])
+app.include_router(export_router, dependencies=[Depends(verify_api_key)])
 app.include_router(system_router)
 
 

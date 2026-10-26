@@ -41,6 +41,7 @@ data/input/*
 data/output/*
 !data/output/.gitkeep
 data/shared_audio/
+data/watch/
 data/library.json
 data/*.db
 data/*.db-wal

@@ -163,6 +163,16 @@ docker compose up -d
 
 ---
 
+## Library export, duplicates & watch folder
+
+* **Export ▾** (library toolbar) downloads the tracks currently shown as **CSV**, **JSON** or a **Rekordbox XML** collection with BPM and key per track.
+  * Rekordbox: enter the folder where this project's `./data` lives on the DJ computer so `Location` points at real files. Beat grids are intentionally *not* written (only a tempo is detected, not a downbeat offset) — let Rekordbox analyze the grid.
+  * CSV cells that start with `=`, `+`, `-` or `@` are prefixed with `'` to prevent spreadsheet formula injection.
+* **⧉ Duplicates** lists byte-identical files (SHA-256) and marks the copy to **keep** (highest quality, then oldest). Nothing is deleted automatically.
+* **Watch folder:** set `WATCH_FOLDER=true` and drop audio into `./data/watch`. Settled files are moved to the library and analysed by the Celery worker; identical re-drops are discarded. Partially copied files are skipped until they stop changing.
+
+---
+
 ## Renaming Token Reference
 
 | Token | Inserts | Example |
@@ -254,6 +264,9 @@ Copy [`.env.example`](.env.example) to `.env`; `docker compose` picks it up auto
 | `GET` | `/api/status` | Get real-time batch processing progress |
 | `POST` | `/api/process` | Copy input → output with tokenized rename and embed ID3 tags |
 | `GET` | `/api/library` | Retrieve all library entries and analysis metadata |
+| `PATCH` | `/api/library/{id}/analysis` | Manually correct BPM and/or Camelot key (kept across re-analysis) |
+| `GET` | `/api/library/duplicates` | Groups of byte-identical library files |
+| `GET` | `/api/export/library?format=csv\|json\|rekordbox` | Export analysed tracks (optional `ids=`, Rekordbox `path_prefix=`) |
 | `GET` | `/api/download/input/{filename}` | Download original uploaded audio file |
 | `GET` | `/api/download/output/{filename}` | Download processed audio file with embedded ID3 tags |
 | `DELETE` | `/api/library/{id}/input` | Delete only the original input file |
