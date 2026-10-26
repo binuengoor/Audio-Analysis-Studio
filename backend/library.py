@@ -166,7 +166,22 @@ class LibraryManager:
                 return self._row_to_entry(row)
         return None
 
-    def update_analysis(self, id: str, result: AnalysisResult):
+    OVERRIDABLE_FIELDS = {
+        "bpm": ("bpm", "bpm_confidence"),
+        "key": ("key_camelot", "key_standard", "key_confidence"),
+    }
+
+    def update_analysis(self, id: str, result: AnalysisResult, preserve_overrides: bool = True):
+        # A fresh analysis must not discard values the user corrected by hand
+        existing = self.get_entry(id)
+        if preserve_overrides and existing and existing.analysis and existing.analysis.manual_overrides:
+            for group in existing.analysis.manual_overrides:
+                for field in self.OVERRIDABLE_FIELDS.get(group, ()):
+                    setattr(result, field, getattr(existing.analysis, field))
+            result.manual_overrides = list(existing.analysis.manual_overrides)
+            result.engine_errors = {
+                k: v for k, v in result.engine_errors.items() if k not in existing.analysis.manual_overrides
+            }
         analysis_str = (
             result.model_dump_json()
             if hasattr(result, "model_dump_json")

@@ -154,6 +154,15 @@ docker compose up -d
 
 ---
 
+## Using the UI
+
+* **Tabs** split a track into Overview, Harmony (chords), Structure, Quality and Pitch & tempo; the waveform player stays pinned while you read.
+* **Correct detection:** fix a wrong tempo with `÷2` / `×2` or type a value, and pick the right Camelot key. Corrections are marked ✎ and survive re-analysis.
+* **Library:** search, filter by key or BPM range, sort any column, and use **Mixes with selected** to list tracks within ±1 key (or the relative major/minor) and ±8% BPM of the selected track.
+* **Keyboard:** `Space` play/pause · `←/→` seek 5 s (`Shift` 15 s) · `1`–`5` tabs · `J`/`K` next/previous track · `/` search · `?` help.
+
+---
+
 ## Renaming Token Reference
 
 | Token | Inserts | Example |

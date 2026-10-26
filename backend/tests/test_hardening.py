@@ -139,3 +139,42 @@ def test_ssrf_guard_allows_private_when_opted_in(monkeypatch):
     import downloader_api
     monkeypatch.setattr(downloader_api, "ALLOW_PRIVATE_URLS", True)
     downloader_api.assert_public_url("http://192.168.1.10/a.mp3")
+
+
+def _seed_entry(name):
+    from routers.studio import get_library
+    from models import AnalysisResult
+    lib = get_library()
+    entry = lib.add_entry(name)
+    lib.update_analysis(entry.id, AnalysisResult(filename=name, bpm=70.0, key_camelot="8A", key_standard="A minor",
+                                                 engine_errors={"bpm": "x"}))
+    return lib, entry
+
+
+def test_manual_override_is_validated_persisted_and_survives_reanalysis():
+    from models import AnalysisResult
+    lib, entry = _seed_entry("test_override.wav")
+    try:
+        assert client.patch(f"/api/library/{entry.id}/analysis", json={}).status_code == 400
+        assert client.patch(f"/api/library/{entry.id}/analysis", json={"bpm": 5}).status_code == 422
+        assert client.patch(f"/api/library/{entry.id}/analysis", json={"key_camelot": "13A"}).status_code == 422
+        assert client.patch("/api/library/nope/analysis", json={"bpm": 100}).status_code == 404
+
+        res = client.patch(f"/api/library/{entry.id}/analysis",
+                           json={"bpm": 140, "key_camelot": "9B", "key_standard": "G major"})
+        assert res.status_code == 200
+        a = res.json()["analysis"]
+        assert a["bpm"] == 140 and a["key_camelot"] == "9B" and a["manual_overrides"] == ["bpm", "key"]
+        assert a["engine_errors"] == {}
+
+        # editing again replaces the earlier correction
+        again = client.patch(f"/api/library/{entry.id}/analysis", json={"bpm": 150}).json()["analysis"]
+        assert again["bpm"] == 150 and again["key_camelot"] == "9B"
+
+        # a fresh engine run must not clobber the correction
+        lib.update_analysis(entry.id, AnalysisResult(filename=entry.filename, bpm=70.0, key_camelot="8A",
+                                                     key_standard="A minor", chords=[]))
+        kept = lib.get_entry(entry.id).analysis
+        assert kept.bpm == 150 and kept.key_camelot == "9B" and kept.manual_overrides == ["bpm", "key"]
+    finally:
+        lib.delete_entry(entry.id) if hasattr(lib, "delete_entry") else None

@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 
 class ChordSegment(BaseModel):
@@ -44,9 +44,18 @@ class AnalysisResult(BaseModel):
     key_confidence: Optional[float] = None
     duration: float = 0.0
     engine_errors: Dict[str, str] = {}
+    # Groups ("bpm", "key") the user corrected by hand; re-analysis keeps these values
+    manual_overrides: List[str] = []
     chords: List[ChordSegment] = []
     quality: Optional[QualityResult] = None
     segments: List[SectionSegment] = []
+
+class AnalysisOverrideRequest(BaseModel):
+    """Manual correction of detected tempo/key. Omitted fields are left unchanged."""
+    bpm: Optional[float] = Field(default=None, ge=20, le=400)
+    key_camelot: Optional[str] = Field(default=None, pattern=r"^(1[0-2]|[1-9])[AB]$")
+    key_standard: Optional[str] = Field(default=None, max_length=32)
+
 
 class AnalyzeRequest(BaseModel):
     filename: Optional[str] = None

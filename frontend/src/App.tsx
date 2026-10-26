@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { UploadZone } from './components/UploadZone';
 import { WaveformPlayer, WaveformPlayerHandle } from './components/WaveformPlayer';
 import { SongStructure } from './components/SongStructure';
@@ -9,10 +9,33 @@ import { ServiceHealthBadge } from './components/ServiceHealthBadge';
 import { Library } from './components/Library';
 import { ToastContainer } from './components/Toast';
 import { ApiKeyDialog } from './components/ApiKeyDialog';
+import { Tabs, TabDef } from './components/Tabs';
+import { AnalysisEditor } from './components/AnalysisEditor';
+import { ExportCard } from './components/ExportCard';
 import { useAudioStore } from './store/useAudioStore';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { AUTH_REQUIRED_EVENT } from './config';
+import { filterAndSort, EMPTY_FILTERS } from './utils/libraryView';
+import { harmonicRelation } from './utils/harmonic';
+
+const SHORTCUTS: [string, string][] = [
+  ['Space', 'Play / pause'],
+  ['← / →', 'Seek 5 s (Shift: 15 s)'],
+  ['1 – 5', 'Switch analysis tab'],
+  ['J / K', 'Next / previous track'],
+  ['/', 'Search library'],
+  ['?', 'Show this help'],
+];
+
+const TAB_IDS = ['overview', 'harmony', 'structure', 'quality', 'transform'] as const;
+type TabId = (typeof TAB_IDS)[number];
+
+const metricCard = 'p-4 rounded-2xl border text-center shadow-lg';
 
 function App() {
   const {
+    library,
+    activeEntryId,
     activeTitle,
     activeAnalysis,
     activeAudioUrl,
@@ -20,419 +43,293 @@ function App() {
     fetchLibrary,
     reanalyzeTrack,
     processOutput,
+    overrideAnalysis,
+    selectTrack,
   } = useAudioStore();
 
-  const [renamePattern, setRenamePattern] = useState('{OriginalName} - {Key} - {BPM}');
-  const [showTagHelp, setShowTagHelp] = useState(false);
+  const [tab, setTab] = useState<TabId>('overview');
+  const [showHelp, setShowHelp] = useState(false);
   const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
   const playerRef = useRef<WaveformPlayerHandle>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
-  // Fetch library on initial mount
   useEffect(() => {
     fetchLibrary();
   }, [fetchLibrary]);
 
+  useEffect(() => {
+    if (!showHelp) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setShowHelp(false);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showHelp]);
+
+  const hasChords = !!activeAnalysis?.chords?.length;
+  const hasSegments = !!activeAnalysis?.segments?.length;
+  const hasQuality = !!activeAnalysis?.quality;
+
+  const tabs: TabDef[] = [
+    { id: 'overview', label: 'Overview', hint: '1' },
+    { id: 'harmony', label: 'Harmony', hint: hasChords ? String(activeAnalysis!.chords!.length) : '2', disabled: !hasChords },
+    { id: 'structure', label: 'Structure', hint: hasSegments ? String(activeAnalysis!.segments!.length) : '3', disabled: !hasSegments },
+    { id: 'quality', label: 'Quality', hint: '4', disabled: !hasQuality },
+    { id: 'transform', label: 'Pitch & tempo', hint: '5', disabled: !activeTitle },
+  ];
+  const currentTab: TabId = tabs.find((t) => t.id === tab)?.disabled ? 'overview' : tab;
+
+  const activeEntry = library.find((e) => e.id === activeEntryId) ?? null;
+
+  const mixes = useMemo(() => {
+    const camelot = activeAnalysis?.key_camelot;
+    if (!activeEntry || !camelot) return [];
+    const matches = filterAndSort(
+      library,
+      { ...EMPTY_FILTERS, mixesWith: { id: activeEntry.id, camelot, bpm: activeAnalysis?.bpm ?? null } },
+      'bpm',
+      'asc'
+    );
+    const bpm = activeAnalysis?.bpm;
+    return bpm ? [...matches].sort((a, b) => Math.abs((a.analysis?.bpm ?? 0) - bpm) - Math.abs((b.analysis?.bpm ?? 0) - bpm)) : matches;
+  }, [library, activeEntry, activeAnalysis?.key_camelot, activeAnalysis?.bpm]);
+
   const handleSeek = (timestamp: number) => {
-    if (playerRef.current) {
-      playerRef.current.seekTo(timestamp);
-      playerRef.current.play();
-    }
+    playerRef.current?.seekTo(timestamp);
+    playerRef.current?.play();
   };
 
-  const handleReanalyze = () => {
-    if (activeTitle) {
-      reanalyzeTrack(activeTitle);
-    }
-  };
+  useKeyboardShortcuts({
+    togglePlay: () => playerRef.current?.togglePlay(),
+    seekBy: (s) => playerRef.current?.seekBy(s),
+    focusSearch: () => searchRef.current?.focus(),
+    selectTab: (i) => {
+      const target = tabs[i];
+      if (target && !target.disabled) setTab(target.id as TabId);
+    },
+    selectRelative: (delta) => {
+      if (library.length === 0) return;
+      const idx = library.findIndex((e) => e.id === activeEntryId);
+      const next = library[Math.min(library.length - 1, Math.max(0, (idx < 0 ? 0 : idx) + delta))];
+      if (next) selectTrack(next);
+    },
+    toggleHelp: () => setShowHelp((v) => !v),
+  });
 
-  const handleProcess = () => {
-    if (activeTitle && activeAnalysis) {
-      processOutput(
-        activeTitle,
-        renamePattern,
-        activeAnalysis.bpm,
-        activeAnalysis.key_standard,
-        activeAnalysis.key_camelot
-      );
-    }
-  };
+  const a = activeAnalysis;
+  const failedEngines = a?.engine_errors ? Object.keys(a.engine_errors) : [];
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-10 font-sans flex flex-col justify-between">
-      <div className="max-w-7xl mx-auto space-y-8 w-full">
-        
-        {/* Top Header */}
-        <header className="relative z-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-900/60 p-6 rounded-2xl border border-slate-800 shadow-xl backdrop-blur-sm">
-          <div>
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 flex-shrink-0 shadow-lg shadow-purple-500/20 rounded-xl overflow-hidden border border-slate-700/60">
-                <svg viewBox="0 0 512 512" className="w-full h-full">
-                  <rect width="512" height="512" rx="128" fill="#111827" />
-                  <g fill="url(#headerBrandGradient)">
-                    <rect x="164" y="176" width="40" height="220" rx="20" />
-                    <rect x="236" y="116" width="40" height="280" rx="20" />
-                    <rect x="308" y="176" width="40" height="220" rx="20" />
-                    <rect x="164" y="276" width="184" height="40" rx="20" />
-                  </g>
-                  <defs>
-                    <linearGradient id="headerBrandGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#06B6D4" />
-                      <stop offset="100%" stopColor="#8B5CF6" />
-                    </linearGradient>
-                  </defs>
-                </svg>
-              </div>
-              <div>
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-                  Audio Analysis Studio
-                </h1>
-                <div className="text-slate-400 text-xs sm:text-sm mt-0.5 space-y-0.5 leading-snug">
-                  <p>Multi-Engine Microservices • BeatNet BPM • MusicalKeyCNN Key • Madmom Chords</p>
-                  <p className="text-slate-500">• Rubber Band v4 Pitch & Stretch • Laplacian Structure • WhatsMyBitrate Quality • Mutagen ID3 Tagging</p>
-                </div>
-              </div>
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6 md:p-8 font-sans">
+      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:z-[10001] focus:bg-purple-600 focus:text-white focus:px-3 focus:py-2 focus:rounded-lg">
+        Skip to analysis
+      </a>
+      <div className="max-w-7xl mx-auto space-y-6 w-full">
+        {/* Header */}
+        <header className="relative z-40 flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 px-5 py-4 rounded-2xl border border-slate-800 shadow-xl backdrop-blur-sm">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 flex-shrink-0 shadow-lg shadow-purple-500/20 rounded-xl overflow-hidden border border-slate-700/60">
+              <img src="/logo.svg" alt="" className="w-full h-full" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight leading-tight">Audio Analysis Studio</h1>
+              <p className="text-slate-400 text-xs">Key · BPM · Chords · Structure · Quality · Pitch &amp; tempo</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 flex-shrink-0">
+          {a && activeTitle && (
+            <div className="hidden md:flex items-center gap-2 min-w-0 max-w-sm" aria-label="Selected track summary">
+              <span className="truncate text-sm text-slate-300" title={activeTitle}>{activeTitle}</span>
+              <span className="px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-200 font-bold text-xs border border-blue-500/30">{a.key_camelot ?? '—'}</span>
+              <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-200 font-bold text-xs border border-purple-500/30 whitespace-nowrap">{a.bpm ?? '—'} BPM</span>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 flex-shrink-0">
             <ServiceHealthBadge />
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent(AUTH_REQUIRED_EVENT))}
+              title="Set API key"
+              aria-label="Set API key"
+              className="w-9 h-9 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
+            >
+              🔑
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowHelp(true)}
+              title="Keyboard shortcuts (?)"
+              aria-label="Keyboard shortcuts"
+              className="w-9 h-9 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
+            >
+              ?
+            </button>
           </div>
         </header>
 
-        {/* Top Section: Upload & Active Analysis */}
-        <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          
-          {/* Left Column: Upload, Track Summary & Renaming Pattern */}
-          <div className="lg:col-span-4 space-y-6">
+        <main id="main" className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Upload (top-left on desktop, first on mobile) */}
+          <div className="lg:col-span-4 lg:col-start-1 lg:row-start-1">
             <UploadZone />
+          </div>
 
-            {/* Active Track Summary Box */}
-            {activeTitle && (
-              <div className="border border-slate-800 rounded-2xl bg-slate-900/80 p-5 shadow-lg space-y-4">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                      Selected Track
-                    </span>
-                    <h3 className="text-sm font-bold text-white truncate max-w-[200px] mt-0.5" title={activeTitle}>
-                      {activeTitle}
-                    </h3>
+          {/* Right column */}
+          <div className="lg:col-span-8 lg:col-start-5 lg:row-start-1 lg:row-span-2 space-y-4 min-w-0">
+            {activeTitle ? (
+              <>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Selected track</span>
+                    <h2 className="text-lg font-bold text-white truncate" title={activeTitle}>{activeTitle}</h2>
                   </div>
-
                   <button
-                    onClick={handleReanalyze}
+                    onClick={() => reanalyzeTrack(activeTitle)}
                     disabled={isAnalyzing}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border flex items-center gap-1.5 ${
-                      isAnalyzing
-                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 cursor-wait'
-                        : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 hover:border-slate-500'
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border flex items-center gap-1.5 flex-shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 ${
+                      isAnalyzing ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 cursor-wait' : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
                     }`}
                   >
-                    <svg
-                      className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin text-amber-300' : ''}`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                      />
-                    </svg>
-                    {isAnalyzing ? 'Re-analyzing...' : 'Re-analyze'}
+                    <span aria-hidden className={isAnalyzing ? 'inline-block animate-spin' : ''}>⟳</span>
+                    {isAnalyzing ? 'Analyzing…' : 'Re-analyze'}
                   </button>
                 </div>
 
-                {activeAnalysis && (
-                  <div className="grid grid-cols-2 gap-2 text-center pt-2 border-t border-slate-800">
-                    <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800/80">
-                      <div className="text-[10px] text-slate-400 uppercase font-semibold">Key</div>
-                      <div className="text-base font-bold text-blue-300 mt-0.5">{activeAnalysis.key_camelot ?? '—'}</div>
-                    </div>
-                    <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800/80">
-                      <div className="text-[10px] text-slate-400 uppercase font-semibold">Tempo</div>
-                      <div className="text-base font-bold text-purple-300 mt-0.5">{activeAnalysis.bpm ?? '—'} BPM</div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Output Filename Pattern Box (Moved under Selected Track) */}
-            {activeAnalysis && (
-              <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow-xl space-y-4">
-                <div>
-                  <div className="flex justify-between items-center mb-1.5 relative">
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                      Output Filename Pattern
-                    </label>
-
-                    {/* More Info Hover / Click Tooltip */}
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => setShowTagHelp(!showTagHelp)}
-                        onMouseEnter={() => setShowTagHelp(true)}
-                        onMouseLeave={() => setShowTagHelp(false)}
-                        className="text-[11px] text-purple-300 hover:text-purple-200 flex items-center gap-1 bg-purple-950/40 hover:bg-purple-900/50 px-2 py-0.5 rounded border border-purple-500/30 transition-colors"
-                      >
-                        <span>ℹ️</span> Available Tags
-                      </button>
-
-                      {showTagHelp && (
-                        <div className="absolute right-0 top-6 w-64 bg-slate-950 border border-purple-500/40 rounded-xl p-3 shadow-2xl z-50 text-xs space-y-2 backdrop-blur-md">
-                          <div className="font-bold text-purple-300 border-b border-slate-800 pb-1">
-                            Available Filename Tokens:
-                          </div>
-                          <ul className="space-y-1.5 text-slate-300 text-[11px]">
-                            <li>
-                              <code className="text-emerald-300 font-mono font-semibold">{`{OriginalName}`}</code>
-                              <p className="text-slate-400 text-[10px]">Original uploaded filename</p>
-                            </li>
-                            <li>
-                              <code className="text-blue-300 font-mono font-semibold">{`{Key}`}</code>
-                              <p className="text-slate-400 text-[10px]">Standard Key (e.g. C# minor, F major)</p>
-                            </li>
-                            <li>
-                              <code className="text-purple-300 font-mono font-semibold">{`{Camelot}`}</code>
-                              <p className="text-slate-400 text-[10px]">Camelot Wheel (e.g. 12A, 7B)</p>
-                            </li>
-                            <li>
-                              <code className="text-amber-300 font-mono font-semibold">{`{BPM}`}</code>
-                              <p className="text-slate-400 text-[10px]">Detected tempo rounded to whole number (e.g. 125)</p>
-                            </li>
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <input
-                    type="text"
-                    value={renamePattern}
-                    onChange={(e) => setRenamePattern(e.target.value)}
-                    className="w-full border border-slate-700 rounded-xl px-3.5 py-2 text-sm bg-slate-950 text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 transition-colors font-mono"
-                    placeholder="{OriginalName} - {Key} - {BPM}"
-                  />
-                </div>
-
-                {/* Quick Pattern Presets */}
-                <div className="space-y-1.5">
-                  <span className="text-slate-400 text-[11px] font-semibold block">Presets:</span>
-                  <div className="flex flex-col gap-1.5">
-                    <button
-                      onClick={() => setRenamePattern('{OriginalName} - {Key} - {BPM}')}
-                      className={`px-2.5 py-1.5 rounded-lg border text-left text-[11px] transition-colors ${
-                        renamePattern === '{OriginalName} - {Key} - {BPM}'
-                          ? 'bg-purple-600/30 text-purple-200 border-purple-500/50 font-bold'
-                          : 'bg-slate-950 text-slate-300 border-slate-800 hover:text-white hover:border-slate-700'
-                      }`}
-                    >
-                      {`{OriginalName} - {Key} - {BPM}`} (Default)
-                    </button>
-                    <button
-                      onClick={() => setRenamePattern('{Camelot} - {BPM} - {OriginalName}')}
-                      className={`px-2.5 py-1.5 rounded-lg border text-left text-[11px] transition-colors ${
-                        renamePattern === '{Camelot} - {BPM} - {OriginalName}'
-                          ? 'bg-purple-600/30 text-purple-200 border-purple-500/50 font-bold'
-                          : 'bg-slate-950 text-slate-300 border-slate-800 hover:text-white hover:border-slate-700'
-                      }`}
-                    >
-                      {`{Camelot} - {BPM} - {OriginalName}`}
-                    </button>
-                    <button
-                      onClick={() => setRenamePattern('{BPM} - {Camelot} - {OriginalName}')}
-                      className={`px-2.5 py-1.5 rounded-lg border text-left text-[11px] transition-colors ${
-                        renamePattern === '{BPM} - {Camelot} - {OriginalName}'
-                          ? 'bg-purple-600/30 text-purple-200 border-purple-500/50 font-bold'
-                          : 'bg-slate-950 text-slate-300 border-slate-800 hover:text-white hover:border-slate-700'
-                      }`}
-                    >
-                      {`{BPM} - {Camelot} - {OriginalName}`}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Save to Library Action Button */}
-                <button
-                  onClick={handleProcess}
-                  className="w-full bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Save to Library
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Right Column: Key/BPM Cards, Chords, Waveform & Quality Specs */}
-          <div className="lg:col-span-8 space-y-6">
-            {activeTitle ? (
-              <div className="space-y-6">
-                
-                {/* Metric Cards */}
-                {activeAnalysis ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                    {/* Camelot Key */}
-                    <div className="bg-gradient-to-br from-blue-950/40 to-slate-900 p-4 rounded-2xl border border-blue-500/30 text-center shadow-lg shadow-blue-500/5">
-                      <div className="text-[11px] text-blue-300 uppercase font-bold tracking-wider mb-1">
-                        Camelot Key
-                      </div>
-                      <div className="text-3xl font-extrabold text-white">{activeAnalysis.key_camelot ?? '—'}</div>
-                      <div className="text-[11px] text-slate-400 mt-1 truncate">{activeAnalysis.key_standard ?? 'Key engine failed'}</div>
-                    </div>
-
-                    {/* BPM */}
-                    <div className="bg-gradient-to-br from-purple-950/40 to-slate-900 p-4 rounded-2xl border border-purple-500/30 text-center shadow-lg shadow-purple-500/5">
-                      <div className="text-[11px] text-purple-300 uppercase font-bold tracking-wider mb-1">
-                        BPM (Tempo)
-                      </div>
-                      <div className="text-3xl font-extrabold text-white">{activeAnalysis.bpm ?? '—'}</div>
-                      <div className="text-[11px] text-slate-400 mt-1">
-                        {activeAnalysis.bpm_confidence != null ? `${Math.round(activeAnalysis.bpm_confidence * 100)}% conf` : 'BPM engine failed'}
-                      </div>
-                    </div>
-
-                    {/* Standard Key */}
-                    <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 text-center shadow-lg">
-                      <div className="text-[11px] text-slate-400 uppercase font-bold tracking-wider mb-1">
-                        Standard Key
-                      </div>
-                      <div className="text-lg font-bold text-white mt-1 truncate">{activeAnalysis.key_standard ?? '—'}</div>
-                      <div className="text-[11px] text-slate-400 mt-1">
-                        {activeAnalysis.key_confidence != null ? `${Math.round(activeAnalysis.key_confidence * 100)}% conf` : 'Key engine failed'}
-                      </div>
-                    </div>
-
-                    {/* Duration, Chords & Structure Count */}
-                    <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 text-center shadow-lg">
-                      <div className="text-[11px] text-slate-400 uppercase font-bold tracking-wider mb-1">
-                        Duration
-                      </div>
-                      <div className="text-lg font-bold text-white mt-1">
-                        {activeAnalysis.duration ? `${activeAnalysis.duration.toFixed(1)}s` : '—'}
-                      </div>
-                      <div className="text-[11px] text-purple-300 mt-1 truncate">
-                        {activeAnalysis.chords?.length || 0} Chords • {activeAnalysis.segments?.length || 0} Sections
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="bg-slate-900/60 p-8 rounded-2xl border border-slate-800 text-center space-y-3">
-                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-500"></div>
-                    <p className="text-sm font-semibold text-slate-300">
-                      Analyzing audio with AI models (BeatNet, MusicalKeyCNN, Madmom, Structure, Quality)...
-                    </p>
+                {/* Sticky player stays visible while you read the analysis */}
+                {activeAudioUrl && (
+                  <div className="lg:sticky lg:top-2 z-30">
+                    <WaveformPlayer ref={playerRef} audioUrl={activeAudioUrl} segments={a?.segments} onTimeUpdate={setCurrentPlaybackTime} />
                   </div>
                 )}
 
-                {activeAnalysis?.engine_errors && Object.keys(activeAnalysis.engine_errors).length > 0 && (
+                {failedEngines.length > 0 && (
                   <div role="alert" className="flex items-start gap-3 p-4 rounded-xl border border-amber-500/40 bg-amber-950/30 text-amber-200 text-sm">
                     <span aria-hidden>⚠</span>
                     <div className="flex-1">
-                      <p className="font-semibold">
-                        {Object.keys(activeAnalysis.engine_errors).join(', ')} analysis failed - values shown as “—” are not guesses.
-                      </p>
-                      <p className="text-xs text-amber-300/80 mt-0.5">
-                        Check the service status badge, then use Re-analyze.
-                      </p>
+                      <p className="font-semibold">{failedEngines.join(', ')} analysis failed — values shown as “—” are not guesses.</p>
+                      <p className="text-xs text-amber-300/80 mt-0.5">Check the service status badge, retry, or enter the value yourself in Overview.</p>
                     </div>
                     <button
-                      onClick={handleReanalyze}
+                      onClick={() => reanalyzeTrack(activeTitle)}
                       disabled={isAnalyzing}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40"
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
                     >
                       Retry
                     </button>
                   </div>
                 )}
 
-                {/* Waveform Player */}
-                {activeAudioUrl && (
-                  <div className="space-y-2">
-                    <WaveformPlayer
-                      ref={playerRef}
-                      audioUrl={activeAudioUrl}
-                      segments={activeAnalysis?.segments}
-                      onTimeUpdate={setCurrentPlaybackTime}
-                    />
+                {a ? (
+                  <>
+                    <Tabs tabs={tabs} active={currentTab} onChange={(id) => setTab(id as TabId)} label="Analysis sections" />
+                    <div role="tabpanel" id={`panel-${currentTab}`} aria-labelledby={`tab-${currentTab}`} className="space-y-4 pt-1">
+                      {currentTab === 'overview' && (
+                        <>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div className={`${metricCard} bg-gradient-to-br from-blue-950/40 to-slate-900 border-blue-500/30`}>
+                              <div className="text-[11px] text-blue-300 uppercase font-bold tracking-wider mb-1">Camelot key</div>
+                              <div className="text-3xl font-extrabold text-white">{a.key_camelot ?? '—'}</div>
+                              <div className="text-[11px] text-slate-400 mt-1 truncate">{a.key_standard ?? 'Key engine failed'}</div>
+                            </div>
+                            <div className={`${metricCard} bg-gradient-to-br from-purple-950/40 to-slate-900 border-purple-500/30`}>
+                              <div className="text-[11px] text-purple-300 uppercase font-bold tracking-wider mb-1">BPM</div>
+                              <div className="text-3xl font-extrabold text-white">{a.bpm ?? '—'}</div>
+                              <div className="text-[11px] text-slate-400 mt-1">
+                                {a.manual_overrides?.includes('bpm') ? 'edited by you' : a.bpm_confidence != null ? `${Math.round(a.bpm_confidence * 100)}% confidence` : 'BPM engine failed'}
+                              </div>
+                            </div>
+                            <div className={`${metricCard} bg-slate-900 border-slate-800`}>
+                              <div className="text-[11px] text-slate-400 uppercase font-bold tracking-wider mb-1">Key confidence</div>
+                              <div className="text-2xl font-bold text-white mt-1">{a.key_confidence != null ? `${Math.round(a.key_confidence * 100)}%` : '—'}</div>
+                              <div className="text-[11px] text-slate-400 mt-1">{a.manual_overrides?.includes('key') ? 'edited by you' : 'MusicalKeyCNN'}</div>
+                            </div>
+                            <div className={`${metricCard} bg-slate-900 border-slate-800`}>
+                              <div className="text-[11px] text-slate-400 uppercase font-bold tracking-wider mb-1">Duration</div>
+                              <div className="text-2xl font-bold text-white mt-1">
+                                {a.duration ? `${Math.floor(a.duration / 60)}:${String(Math.floor(a.duration % 60)).padStart(2, '0')}` : '—'}
+                              </div>
+                              <div className="text-[11px] text-purple-300 mt-1 truncate">{a.chords?.length ?? 0} chords · {a.segments?.length ?? 0} sections</div>
+                            </div>
+                          </div>
+
+                          {activeEntry && (
+                            <AnalysisEditor analysis={a} disabled={isAnalyzing} onSave={(patch) => overrideAnalysis(activeEntry.id, patch)} />
+                          )}
+
+                          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
+                            <h3 className="text-sm font-bold text-white uppercase tracking-wider">Mixes well with</h3>
+                            {!a.key_camelot ? (
+                              <p className="text-sm text-slate-500">Set a key above to find harmonic matches in your library.</p>
+                            ) : mixes.length === 0 ? (
+                              <p className="text-sm text-slate-500">No other tracks in your library are within ±1 key and ±8% BPM of this one yet.</p>
+                            ) : (
+                              <ul className="grid sm:grid-cols-2 gap-2">
+                                {mixes.slice(0, 6).map((m) => (
+                                  <li key={m.id}>
+                                    <button
+                                      onClick={() => selectTrack(m)}
+                                      className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 hover:border-sky-500/50 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+                                    >
+                                      <span className="truncate text-sm text-slate-200" title={m.filename}>{m.filename}</span>
+                                      <span className="flex-shrink-0 text-[11px] font-semibold text-sky-300 whitespace-nowrap">
+                                        {m.analysis?.key_camelot} · {m.analysis?.bpm} · {harmonicRelation(a.key_camelot, m.analysis?.key_camelot) === 'relative' ? 'rel' : harmonicRelation(a.key_camelot, m.analysis?.key_camelot) === 'same' ? 'same' : '±1'}
+                                      </span>
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        </>
+                      )}
+
+                      {currentTab === 'harmony' && hasChords && <ChordProgression chords={a.chords} onSeek={handleSeek} currentTime={currentPlaybackTime} defaultExpanded />}
+                      {currentTab === 'structure' && hasSegments && <SongStructure segments={a.segments} onSeek={handleSeek} currentTime={currentPlaybackTime} defaultExpanded />}
+                      {currentTab === 'quality' && a.quality && <QualityAnalysis quality={a.quality} defaultExpanded />}
+                      {currentTab === 'transform' && (
+                        <PitchTimeStretch
+                          key={activeTitle}
+                          filename={activeTitle}
+                          detectedBpm={a.bpm ?? undefined}
+                          detectedKeyStandard={a.key_standard ?? undefined}
+                          detectedKeyCamelot={a.key_camelot ?? undefined}
+                          defaultExpanded
+                        />
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="bg-slate-900/60 p-8 rounded-2xl border border-slate-800 text-center space-y-3" role="status">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-500" />
+                    <p className="text-sm font-semibold text-slate-300">Analyzing… tempo, key, chords, structure and quality run in parallel.</p>
                   </div>
                 )}
-
-                {/* Song Structure & Sections (Collapsible - Collapsed by Default) */}
-                {activeAnalysis && activeAnalysis.segments && activeAnalysis.segments.length > 0 && (
-                  <SongStructure
-                    segments={activeAnalysis.segments}
-                    onSeek={handleSeek}
-                    currentTime={currentPlaybackTime}
-                  />
-                )}
-
-                {/* Pitch Shifting & Time Stretching (Collapsible - Collapsed by Default) */}
-                {activeTitle && (
-                  <PitchTimeStretch
-                    filename={activeTitle}
-                    detectedBpm={activeAnalysis?.bpm ?? undefined}
-                    detectedKeyStandard={activeAnalysis?.key_standard ?? undefined}
-                    detectedKeyCamelot={activeAnalysis?.key_camelot ?? undefined}
-                  />
-                )}
-
-                {/* Chord Progression Interactive Section (Collapsible - Expanded by Default) */}
-                {activeAnalysis && activeAnalysis.chords && (
-                  <ChordProgression
-                    chords={activeAnalysis.chords}
-                    onSeek={handleSeek}
-                    currentTime={currentPlaybackTime}
-                  />
-                )}
-
-                {/* Audio Quality & Mastering Specs (Collapsible - Expanded by Default) */}
-                {activeAnalysis && activeAnalysis.quality && (
-                  <QualityAnalysis quality={activeAnalysis.quality} />
-                )}
-
-              </div>
+              </>
             ) : (
-              <div className="h-full min-h-[300px] flex flex-col items-center justify-center text-slate-500 border-2 border-dashed border-slate-800 rounded-2xl p-12 bg-slate-900/40 text-center">
-                <svg className="w-16 h-16 mb-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-                </svg>
-                <p className="text-base font-semibold text-slate-400">No track selected for analysis</p>
-                <p className="text-xs text-slate-500 mt-1">Drop audio files above or pick a track from your library below</p>
+              <div className="min-h-[300px] flex flex-col items-center justify-center text-slate-500 border-2 border-dashed border-slate-800 rounded-2xl p-12 bg-slate-900/40 text-center">
+                <p className="text-base font-semibold text-slate-300">No track selected</p>
+                <p className="text-sm text-slate-500 mt-1">Drop an audio file or paste a URL on the left, or pick a track from the library below.</p>
               </div>
             )}
           </div>
-        </section>
+          {/* Export: under the upload on desktop, after the analysis on mobile */}
+          {activeTitle && a && (
+            <div className="lg:col-span-4 lg:col-start-1 lg:row-start-2 lg:self-start">
+              <ExportCard
+                filename={activeTitle}
+                bpm={a.bpm}
+                keyStandard={a.key_standard}
+                camelot={a.key_camelot}
+                onSave={(pattern) => processOutput(activeTitle, pattern, a.bpm, a.key_standard, a.key_camelot)}
+              />
+            </div>
+          )}
+        </main>
 
-        {/* Bottom Section: Full Library Management */}
-        <section className="pt-4">
-          <Library />
-        </section>
+        <Library searchInputRef={searchRef} />
 
-        {/* Footer */}
-        <footer className="mt-12 pt-8 border-t border-slate-800/80 text-center text-xs text-slate-500 space-y-3">
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <span>Built with ❤️ for music creators, DJs, and audio engineers.</span>
-            <span className="text-slate-700">•</span>
-            <span>Special thanks to the awesome open-source community & upstream audio intelligence projects.</span>
-          </div>
-          <div className="flex items-center justify-center gap-4 text-slate-400 text-[11px]">
-            <a
-              href="https://github.com/binuengoor/Audio-Analysis-Studio"
-              target="_blank"
-              rel="noreferrer"
-              className="hover:text-purple-300 transition-colors flex items-center gap-1.5 font-medium"
-            >
-              <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
-              </svg>
-              GitHub Repository
-            </a>
+        <footer className="pt-6 border-t border-slate-800/80 text-center text-xs text-slate-500 space-y-2">
+          <div>Built for music creators, DJs and audio engineers — powered by open-source audio research.</div>
+          <div className="flex items-center justify-center gap-3 text-slate-400">
+            <a href="https://github.com/binuengoor/Audio-Analysis-Studio" target="_blank" rel="noreferrer" className="hover:text-purple-300 focus:outline-none focus-visible:underline">GitHub</a>
             <span className="text-slate-700">•</span>
             <span>MIT License</span>
           </div>
@@ -440,6 +337,25 @@ function App() {
 
         <ToastContainer />
         <ApiKeyDialog />
+
+        {showHelp && (
+          <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4" onClick={() => setShowHelp(false)}>
+            <div role="dialog" aria-modal="true" aria-labelledby="help-title" className="w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <h2 id="help-title" className="text-lg font-bold text-white mb-3">Keyboard shortcuts</h2>
+              <dl className="space-y-2 text-sm">
+                {SHORTCUTS.map(([keys, what]) => (
+                  <div key={keys} className="flex justify-between gap-4">
+                    <dt><kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-200 font-mono text-xs">{keys}</kbd></dt>
+                    <dd className="text-slate-400 text-right">{what}</dd>
+                  </div>
+                ))}
+              </dl>
+              <button autoFocus onClick={() => setShowHelp(false)} className="mt-5 w-full px-4 py-2 rounded-lg text-sm font-semibold bg-slate-800 hover:bg-slate-700 text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400">
+                Close
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

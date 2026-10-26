@@ -7,6 +7,8 @@ export interface WaveformPlayerHandle {
   seekTo: (seconds: number) => void;
   play: () => void;
   pause: () => void;
+  togglePlay: () => void;
+  seekBy: (deltaSeconds: number) => void;
 }
 
 interface WaveformPlayerProps {
@@ -45,6 +47,14 @@ export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerPro
     },
     pause: () => {
       wavesurfer.current?.pause();
+    },
+    togglePlay: () => {
+      if (isReady) wavesurfer.current?.playPause();
+    },
+    seekBy: (delta: number) => {
+      const ws = wavesurfer.current;
+      if (!ws || !isReady) return;
+      ws.setTime(Math.max(0, Math.min(ws.getDuration(), ws.getCurrentTime() + delta)));
     },
   }));
 
@@ -174,6 +184,7 @@ export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerPro
         <button
           onClick={togglePlayPause}
           disabled={!isReady}
+          aria-label={isPlaying ? 'Pause' : 'Play'}
           className={`
             px-6 py-2 rounded-full font-bold transition-all flex items-center gap-2 text-sm shadow-lg
             ${isReady 

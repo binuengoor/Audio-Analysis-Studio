@@ -41,6 +41,7 @@ interface AppState {
   updateFileStatus: (id: string, status: AudioFile['status']) => void;
   pollBatchStatus: () => Promise<void>;
   processOutput: (filename: string, pattern: string, bpm: number | null, key: string | null, camelot: string | null) => Promise<void>;
+  overrideAnalysis: (id: string, patch: { bpm?: number; key_camelot?: string; key_standard?: string }) => Promise<boolean>;
   deleteInput: (id: string) => Promise<void>;
   deleteOutput: (id: string) => Promise<void>;
   deleteEntry: (id: string) => Promise<void>;
@@ -442,6 +443,29 @@ export const useAudioStore = create<AppState>((set, get) => ({
       const msg = error instanceof Error ? error.message : String(error);
       console.error('Process error:', msg);
       get().showToast(`Failed to process file: ${msg}`, 'error');
+    }
+  },
+
+  overrideAnalysis: async (id, patch) => {
+    try {
+      const res = await apiFetch(`/api/library/${id}/analysis`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(typeof err.detail === 'string' ? err.detail : 'Update rejected');
+      }
+      const entry: LibraryEntry = await res.json();
+      set((state) => (state.activeEntryId === id ? { activeAnalysis: entry.analysis } : {}));
+      await get().fetchLibrary();
+      get().showToast('Saved your correction (kept on re-analysis)', 'success');
+      return true;
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      get().showToast(`Could not save correction: ${msg}`, 'error');
+      return false;
     }
   },
 

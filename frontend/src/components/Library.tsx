@@ -1,63 +1,165 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { useAudioStore } from '../store/useAudioStore';
 import { LibraryEntry } from '../types';
 import { buildFileUrl } from '../config';
+import { ALL_CAMELOT_KEYS, harmonicRelation } from '../utils/harmonic';
+import {
+  EMPTY_FILTERS,
+  LibraryFilters,
+  SortDir,
+  SortKey,
+  filterAndSort,
+  hasEngineErrors,
+} from '../utils/libraryView';
 
-export const Library: React.FC = () => {
-  const {
-    library,
-    activeEntryId,
-    selectTrack,
-    deleteInput,
-    deleteOutput,
-    deleteEntry,
-    clearLibrary,
-  } = useAudioStore();
+interface LibraryProps {
+  searchInputRef?: React.RefObject<HTMLInputElement>;
+}
+
+const TrashIcon = () => (
+  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+  </svg>
+);
+
+const DownloadIcon = () => (
+  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+  </svg>
+);
+
+const focusRing = 'focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400';
+const control = `bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:border-purple-500 ${focusRing}`;
+
+const COLUMNS: { key: SortKey | null; label: string; align?: string }[] = [
+  { key: 'name', label: 'Track' },
+  { key: 'key', label: 'Key' },
+  { key: 'bpm', label: 'BPM' },
+  { key: 'quality', label: 'Quality' },
+  { key: null, label: 'Files', align: 'text-center' },
+  { key: 'added', label: 'Added' },
+  { key: null, label: '', align: 'text-center' },
+];
+
+export const Library: React.FC<LibraryProps> = ({ searchInputRef }) => {
+  const { library, activeEntryId, selectTrack, deleteInput, deleteOutput, deleteEntry, clearLibrary } = useAudioStore();
+  const [filters, setFilters] = useState<LibraryFilters>(EMPTY_FILTERS);
+  const [sortKey, setSortKey] = useState<SortKey>('added');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [mixMode, setMixMode] = useState(false);
+
+  const active = library.find((e) => e.id === activeEntryId) ?? null;
+  const effectiveFilters: LibraryFilters = {
+    ...filters,
+    mixesWith:
+      mixMode && active?.analysis?.key_camelot
+        ? { id: active.id, camelot: active.analysis.key_camelot, bpm: active.analysis.bpm }
+        : null,
+  };
+
+  const rows = useMemo(
+    () => filterAndSort(library, effectiveFilters, sortKey, sortDir),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [library, filters, sortKey, sortDir, mixMode, activeEntryId, active?.analysis?.key_camelot, active?.analysis?.bpm]
+  );
+
+  const isFiltered = JSON.stringify(filters) !== JSON.stringify(EMPTY_FILTERS) || mixMode;
+
+  const toggleSort = (key: SortKey) => {
+    if (key === sortKey) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+    else {
+      setSortKey(key);
+      setSortDir(key === 'added' ? 'desc' : 'asc');
+    }
+  };
+
+  const num = (v: string): number | null => (v === '' || Number.isNaN(Number(v)) ? null : Number(v));
 
   const handleDownload = (e: React.MouseEvent, type: 'input' | 'output', path: string) => {
     e.stopPropagation();
-    const url = buildFileUrl(`/api/download/${type}/${encodeURIComponent(path)}`);
     const a = document.createElement('a');
-    a.href = url;
+    a.href = buildFileUrl(`/api/download/${type}/${encodeURIComponent(path)}`);
     a.download = path;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
   };
 
+  const iconBtn = `p-1.5 rounded-md border transition-colors ${focusRing}`;
+
   return (
-    <div className="bg-slate-900/80 rounded-2xl border border-slate-800 shadow-xl overflow-hidden">
-      <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-900/90">
-        <div>
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <span>Audio Library</span>
-            <span className="text-xs bg-purple-500/20 text-purple-300 px-2.5 py-0.5 rounded-full border border-purple-500/30">
-              {library.length} {library.length === 1 ? 'Track' : 'Tracks'}
+    <section aria-label="Audio library" className="bg-slate-900/80 rounded-2xl border border-slate-800 shadow-xl overflow-hidden">
+      <div className="p-5 border-b border-slate-800 bg-slate-900/90 space-y-4">
+        <div className="flex justify-between items-center gap-3">
+          <h2 className="text-lg font-bold text-white flex items-center gap-2">
+            Library
+            <span className="text-xs bg-purple-500/20 text-purple-300 px-2.5 py-0.5 rounded-full border border-purple-500/30 font-normal">
+              {isFiltered ? `${rows.length} of ${library.length}` : library.length} {library.length === 1 ? 'track' : 'tracks'}
             </span>
           </h2>
-          <p className="text-slate-400 text-xs mt-1">
-            Click any track to load its analysis, chords, and player above. Manage input/output files and downloads below.
-          </p>
+          {library.length > 0 && (
+            <button
+              onClick={() => {
+                if (window.confirm('Delete ALL files from the library? This cannot be undone.')) clearLibrary();
+              }}
+              className={`px-3 py-1.5 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 rounded-lg text-xs font-semibold border border-rose-500/30 ${focusRing}`}
+            >
+              Clear library
+            </button>
+          )}
         </div>
 
         {library.length > 0 && (
-          <button
-            onClick={() => {
-              if (
-                window.confirm(
-                  'Are you sure you want to delete ALL files from the library? This cannot be undone.'
-                )
-              ) {
-                clearLibrary();
-              }
-            }}
-            className="px-3.5 py-1.5 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 rounded-lg text-xs font-semibold transition-colors border border-rose-500/30 flex items-center gap-1.5"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-            Clear Library
-          </button>
+          <div className="flex flex-wrap items-center gap-2" role="search">
+            <label className="sr-only" htmlFor="lib-search">Search library</label>
+            <input
+              id="lib-search"
+              ref={searchInputRef}
+              type="search"
+              placeholder="Search name or key…  ( / )"
+              value={filters.query}
+              onChange={(e) => setFilters({ ...filters, query: e.target.value })}
+              className={`${control} w-56`}
+            />
+            <label className="sr-only" htmlFor="lib-key">Filter by key</label>
+            <select id="lib-key" value={filters.key} onChange={(e) => setFilters({ ...filters, key: e.target.value })} className={control}>
+              <option value="">Any key</option>
+              {ALL_CAMELOT_KEYS.map((k) => <option key={k} value={k}>{k}</option>)}
+            </select>
+            <label className="sr-only" htmlFor="lib-bpm-min">Minimum BPM</label>
+            <input id="lib-bpm-min" type="number" placeholder="BPM min" min={0} value={filters.bpmMin ?? ''} onChange={(e) => setFilters({ ...filters, bpmMin: num(e.target.value) })} className={`${control} w-24`} />
+            <span className="text-slate-600" aria-hidden>–</span>
+            <label className="sr-only" htmlFor="lib-bpm-max">Maximum BPM</label>
+            <input id="lib-bpm-max" type="number" placeholder="BPM max" min={0} value={filters.bpmMax ?? ''} onChange={(e) => setFilters({ ...filters, bpmMax: num(e.target.value) })} className={`${control} w-24`} />
+
+            <button
+              type="button"
+              aria-pressed={mixMode}
+              disabled={!active?.analysis?.key_camelot}
+              onClick={() => setMixMode(!mixMode)}
+              title={active?.analysis?.key_camelot ? `Tracks compatible with ${active.analysis.key_camelot} @ ${active.analysis.bpm ?? '?'} BPM` : 'Select an analyzed track first'}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-40 ${focusRing} ${
+                mixMode ? 'bg-sky-500/20 text-sky-200 border-sky-400/50' : 'bg-slate-950 text-slate-300 border-slate-700 hover:border-slate-500'
+              }`}
+            >
+              ♫ Mixes with selected
+            </button>
+            <button
+              type="button"
+              aria-pressed={filters.failedOnly}
+              onClick={() => setFilters({ ...filters, failedOnly: !filters.failedOnly })}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${focusRing} ${
+                filters.failedOnly ? 'bg-amber-500/20 text-amber-200 border-amber-400/50' : 'bg-slate-950 text-slate-300 border-slate-700 hover:border-slate-500'
+              }`}
+            >
+              ⚠ Needs attention
+            </button>
+            {isFiltered && (
+              <button type="button" onClick={() => { setFilters(EMPTY_FILTERS); setMixMode(false); }} className={`text-xs text-slate-400 hover:text-white underline ${focusRing}`}>
+                Reset
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -65,212 +167,158 @@ export const Library: React.FC = () => {
         <table className="min-w-full divide-y divide-slate-800 text-slate-200">
           <thead className="bg-slate-950/60">
             <tr>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                Original Filename
-              </th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                Updated / Output Filename
-              </th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                Analysis (Key / BPM / Chords)
-              </th>
-              <th className="px-5 py-3.5 text-center text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                Original File
-              </th>
-              <th className="px-5 py-3.5 text-center text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                Processed File
-              </th>
-              <th className="px-4 py-3.5 text-center text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                Actions
-              </th>
+              {COLUMNS.map((col, i) => (
+                <th
+                  key={i}
+                  scope="col"
+                  aria-sort={col.key && col.key === sortKey ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                  className={`px-4 py-3 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider ${col.align ?? ''}`}
+                >
+                  {col.key ? (
+                    <button type="button" onClick={() => toggleSort(col.key!)} className={`inline-flex items-center gap-1 uppercase hover:text-white ${focusRing} rounded`}>
+                      {col.label}
+                      <span aria-hidden className={col.key === sortKey ? 'text-purple-300' : 'text-slate-700'}>
+                        {col.key === sortKey ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+                      </span>
+                    </button>
+                  ) : (
+                    col.label
+                  )}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60 bg-slate-900/40">
-            {library.map((entry: LibraryEntry) => {
+            {rows.map((entry: LibraryEntry) => {
               const isActive = activeEntryId === entry.id;
+              const a = entry.analysis;
+              const relation = active && !isActive ? harmonicRelation(active.analysis?.key_camelot, a?.key_camelot) : null;
+              const q = a?.quality;
+              const failed = hasEngineErrors(entry);
 
               return (
                 <tr
                   key={entry.id}
+                  tabIndex={0}
+                  aria-selected={isActive}
                   onClick={() => selectTrack(entry)}
-                  className={`transition-all cursor-pointer ${
-                    isActive
-                      ? 'bg-purple-600/15 border-l-4 border-l-purple-500'
-                      : 'hover:bg-slate-800/50'
+                  onKeyDown={(e) => {
+                    if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                      e.preventDefault();
+                      selectTrack(entry);
+                    }
+                  }}
+                  className={`cursor-pointer transition-colors ${focusRing} focus-visible:ring-inset ${
+                    isActive ? 'bg-purple-600/15 shadow-[inset_4px_0_0_0_theme(colors.purple.500)]' : 'hover:bg-slate-800/50'
                   }`}
                 >
-                  {/* Original Filename */}
-                  <td className="px-5 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-2.5">
-                      <div className={`p-2 rounded-lg ${isActive ? 'bg-purple-500 text-white' : 'bg-slate-800 text-slate-400'}`}>
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-                        </svg>
+                  <td className="px-4 py-3">
+                    <div className="font-semibold text-sm text-white max-w-[260px] truncate" title={entry.filename}>{entry.filename}</div>
+                    {entry.output_path && (
+                      <div className="text-[11px] text-emerald-300/90 max-w-[260px] truncate" title={entry.output_path}>→ {entry.output_path}</div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    {a ? (
+                      <div className="flex items-center gap-1.5">
+                        <span className={`px-2 py-0.5 rounded-md font-bold text-xs border ${a.key_camelot ? 'bg-blue-500/20 text-blue-200 border-blue-500/30' : 'bg-slate-800 text-slate-500 border-slate-700'}`}>
+                          {a.key_camelot ?? '—'}
+                        </span>
+                        {relation && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30" title="Harmonic match with the selected track">
+                            {relation === 'same' ? 'same' : relation === 'relative' ? 'relative' : '±1'}
+                          </span>
+                        )}
+                        <span className="text-xs text-slate-400">{a.key_standard ?? ''}</span>
                       </div>
-                      <div>
-                        <div className="font-semibold text-sm text-white max-w-[220px] truncate" title={entry.filename}>
-                          {entry.filename}
-                        </div>
-                        <div className="text-[11px] text-slate-400 mt-0.5">
-                          Added {new Date(entry.created_at * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </div>
-                      </div>
+                    ) : (
+                      <span className="text-xs text-amber-400/80 animate-pulse">Analyzing…</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold">
+                    {a ? (
+                      <>
+                        <span className={a.bpm == null ? 'text-slate-500' : 'text-purple-200'}>{a.bpm ?? '—'}</span>
+                        {a.manual_overrides?.includes('bpm') && <span className="ml-1 text-[10px] text-emerald-300" title="Edited by you">✎</span>}
+                      </>
+                    ) : null}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <div className="flex flex-wrap items-center gap-1 text-[10px]">
+                      {q && (
+                        <>
+                          <span className="text-emerald-400/90 bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                            {q.container.codec} {q.container.bit_depth}-bit
+                          </span>
+                          <span className="text-purple-300 bg-purple-950/40 px-1.5 py-0.5 rounded border border-purple-500/20">{q.mastering.lufs.toFixed(1)} LUFS</span>
+                          {q.authenticity.verdict === 'SUSPICIOUS' && (
+                            <span className="font-semibold px-1.5 py-0.5 rounded border bg-rose-950/40 text-rose-300 border-rose-500/30">SUSPICIOUS</span>
+                          )}
+                        </>
+                      )}
+                      {failed && (
+                        <span
+                          className="bg-amber-950/60 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/30"
+                          title={Object.entries(a!.engine_errors!).map(([k, v]) => `${k}: ${v}`).join('\n')}
+                        >
+                          ⚠ {Object.keys(a!.engine_errors!).join(', ')}
+                        </span>
+                      )}
                     </div>
                   </td>
-
-                  {/* Updated Filename */}
-                  <td className="px-5 py-4 whitespace-nowrap">
-                    {entry.output_path ? (
-                      <div className="flex flex-col">
-                        <span className="text-xs font-semibold text-emerald-300 max-w-[240px] truncate" title={entry.output_path}>
-                          {entry.output_path}
-                        </span>
-                        <span className="text-[10px] text-emerald-400/80 mt-0.5">✓ ID3 Tags Embedded</span>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-slate-500 italic">Not yet renamed</span>
-                    )}
+                  <td className="px-4 py-3 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-center gap-1">
+                      {entry.input_path && (
+                        <>
+                          <button onClick={(e) => handleDownload(e, 'input', entry.input_path!)} aria-label={`Download original ${entry.filename}`} title="Download original" className={`${iconBtn} bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700`}><DownloadIcon /></button>
+                          <button onClick={() => deleteInput(entry.id)} aria-label={`Delete original ${entry.filename}`} title="Delete original" className={`${iconBtn} bg-rose-500/10 hover:bg-rose-500/25 text-rose-300 border-rose-500/30`}><TrashIcon /></button>
+                        </>
+                      )}
+                      {entry.output_path && (
+                        <>
+                          <button onClick={(e) => handleDownload(e, 'output', entry.output_path!)} aria-label={`Download processed ${entry.output_path}`} title="Download processed (tagged)" className={`${iconBtn} bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-200 border-emerald-500/30`}><DownloadIcon /></button>
+                          <button onClick={() => deleteOutput(entry.id)} aria-label={`Delete processed ${entry.output_path}`} title="Delete processed" className={`${iconBtn} bg-rose-500/10 hover:bg-rose-500/25 text-rose-300 border-rose-500/30`}><TrashIcon /></button>
+                        </>
+                      )}
+                      {!entry.input_path && !entry.output_path && <span className="text-[11px] text-slate-500">none</span>}
+                    </div>
                   </td>
-
-                  {/* Analysis Result */}
-                  <td className="px-5 py-4 whitespace-nowrap">
-                    {entry.analysis ? (
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-2">
-                          <span className="px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-200 font-bold text-xs border border-blue-500/30">
-                            {entry.analysis.key_camelot ?? '—'}
-                          </span>
-                          <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-200 font-bold text-xs border border-purple-500/30">
-                            {entry.analysis.bpm ?? '—'} BPM
-                          </span>
-                          <span className="text-xs text-slate-400">
-                            {entry.analysis.key_standard ?? ''}
-                          </span>
-                          {entry.analysis.engine_errors && Object.keys(entry.analysis.engine_errors).length > 0 && (
-                            <span
-                              className="text-[10px] bg-amber-950/60 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/30"
-                              title={Object.entries(entry.analysis.engine_errors).map(([k, v]) => `${k}: ${v}`).join('\n')}
-                            >
-                              ⚠ {Object.keys(entry.analysis.engine_errors).join(', ')} failed
-                            </span>
-                          )}
-                          {entry.analysis.chords && entry.analysis.chords.length > 0 && (
-                            <span className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded border border-slate-700">
-                              {entry.analysis.chords.length} chords
-                            </span>
-                          )}
-                        </div>
-
-                        {entry.analysis.quality && (
-                          <div className="flex items-center gap-2 text-[10px]">
-                            <span className="text-emerald-400/90 font-medium bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-500/20">
-                              {entry.analysis.quality.container.codec} {entry.analysis.quality.container.bit_depth}-bit
-                            </span>
-                            <span className="text-purple-300 font-medium bg-purple-950/40 px-1.5 py-0.5 rounded border border-purple-500/20">
-                              {entry.analysis.quality.mastering.lufs.toFixed(1)} LUFS
-                            </span>
-                            <span className={`font-semibold px-1.5 py-0.5 rounded border ${
-                              entry.analysis.quality.authenticity.verdict === 'SUSPICIOUS'
-                                ? 'bg-rose-950/40 text-rose-300 border-rose-500/30'
-                                : 'bg-slate-800 text-slate-300 border-slate-700'
-                            }`}>
-                              {entry.analysis.quality.authenticity.verdict}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-xs text-amber-400/80 animate-pulse">Analyzing...</span>
-                    )}
+                  <td className="px-4 py-3 whitespace-nowrap text-xs text-slate-400">
+                    {new Date(entry.created_at * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                   </td>
-
-                  {/* Original Input Actions */}
-                  <td className="px-5 py-4 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
-                    {entry.input_path ? (
-                      <div className="flex items-center justify-center gap-1.5">
-                        <button
-                          onClick={(e) => handleDownload(e, 'input', entry.input_path!)}
-                          title="Download Original Audio"
-                          className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-md transition-colors border border-slate-700 text-xs flex items-center gap-1"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                          </svg>
-                        </button>
-                        <button
-                          onClick={() => deleteInput(entry.id)}
-                          title="Delete Original Audio"
-                          className="p-1.5 bg-rose-500/10 hover:bg-rose-500/25 text-rose-300 rounded-md transition-colors border border-rose-500/30 text-xs"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="text-[11px] text-slate-500">None</span>
-                    )}
-                  </td>
-
-                  {/* Processed Output Actions */}
-                  <td className="px-5 py-4 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
-                    {entry.output_path ? (
-                      <div className="flex items-center justify-center gap-1.5">
-                        <button
-                          onClick={(e) => handleDownload(e, 'output', entry.output_path!)}
-                          title="Download Processed Audio (with ID3 Tags)"
-                          className="p-1.5 bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-200 rounded-md transition-colors border border-emerald-500/30 text-xs flex items-center gap-1"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                          </svg>
-                        </button>
-                        <button
-                          onClick={() => deleteOutput(entry.id)}
-                          title="Delete Processed File"
-                          className="p-1.5 bg-rose-500/10 hover:bg-rose-500/25 text-rose-300 rounded-md transition-colors border border-rose-500/30 text-xs"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="text-[11px] text-slate-500">—</span>
-                    )}
-                  </td>
-
-                  {/* Remove Entire Entry */}
-                  <td className="px-4 py-4 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-3 py-3 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
                     <button
-                      onClick={() => deleteEntry(entry.id)}
+                      onClick={() => {
+                        if (window.confirm(`Remove "${entry.filename}" and its files from the library?`)) deleteEntry(entry.id);
+                      }}
+                      aria-label={`Remove ${entry.filename} from library`}
                       title="Remove from library"
-                      className="text-slate-500 hover:text-rose-400 p-1 transition-colors"
+                      className={`text-slate-500 hover:text-rose-400 p-1 rounded ${focusRing}`}
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
+                      ✕
                     </button>
                   </td>
                 </tr>
               );
             })}
 
-            {library.length === 0 && (
+            {rows.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
-                  <div className="flex flex-col items-center justify-center space-y-2">
-                    <svg className="w-8 h-8 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-                    </svg>
-                    <p className="text-sm">No tracks in library yet. Drop an audio file above to analyze.</p>
-                  </div>
+                <td colSpan={COLUMNS.length} className="px-6 py-12 text-center text-slate-500">
+                  {library.length === 0 ? (
+                    <p className="text-sm">No tracks yet. Drop an audio file or paste a URL above to analyze it.</p>
+                  ) : (
+                    <p className="text-sm">
+                      No tracks match these filters.{' '}
+                      <button className={`underline text-slate-300 ${focusRing}`} onClick={() => { setFilters(EMPTY_FILTERS); setMixMode(false); }}>Reset filters</button>
+                    </p>
+                  )}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
-    </div>
+    </section>
   );
 };

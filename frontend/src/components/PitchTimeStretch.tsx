@@ -15,6 +15,7 @@ interface PitchTimeStretchProps {
   detectedBpm?: number;
   detectedKeyStandard?: string;
   detectedKeyCamelot?: string;
+  defaultExpanded?: boolean;
 }
 
 export const PitchTimeStretch: React.FC<PitchTimeStretchProps> = ({
@@ -22,9 +23,10 @@ export const PitchTimeStretch: React.FC<PitchTimeStretchProps> = ({
   detectedBpm = 120,
   detectedKeyStandard,
   detectedKeyCamelot,
+  defaultExpanded = false,
 }) => {
   // Collapsible accordion state
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
   // Transformation states
   const [pitchSemitones, setPitchSemitones] = useState<number>(0);

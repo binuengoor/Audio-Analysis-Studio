@@ -19,6 +19,7 @@ from config import (
 )
 from utils import sanitize_filename, resolve_audio_file_path, unique_upload_name
 from models import (
+    AnalysisOverrideRequest,
     AnalysisResult,
     AnalyzeRequest,
     BatchAnalyzeRequest,
@@ -458,6 +459,38 @@ def download_output(filename: str):
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(file_path, filename=safe_filename)
+
+
+@router.patch("/api/library/{id}/analysis", response_model=LibraryEntry)
+def override_analysis(
+    id: str,
+    request: AnalysisOverrideRequest,
+    library: LibraryManager = Depends(get_library),
+):
+    """Manually corrects BPM and/or key (e.g. half-time fix). Marked as overridden and kept across re-analysis."""
+    entry = library.get_entry(id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Library entry not found")
+    if request.bpm is None and request.key_camelot is None:
+        raise HTTPException(status_code=400, detail="Provide bpm and/or key_camelot")
+
+    analysis = entry.analysis or AnalysisResult(filename=entry.filename)
+    overrides = set(analysis.manual_overrides)
+    if request.bpm is not None:
+        analysis.bpm = round(request.bpm, 1)
+        analysis.bpm_confidence = 1.0
+        overrides.add("bpm")
+    if request.key_camelot is not None:
+        analysis.key_camelot = request.key_camelot
+        analysis.key_standard = request.key_standard or analysis.key_standard
+        analysis.key_confidence = 1.0
+        overrides.add("key")
+    for group in overrides:
+        analysis.engine_errors.pop(group, None)
+    analysis.manual_overrides = sorted(overrides)
+
+    library.update_analysis(entry.id, analysis, preserve_overrides=False)
+    return library.get_entry(entry.id)
 
 
 @router.delete("/api/library/{id}/input")

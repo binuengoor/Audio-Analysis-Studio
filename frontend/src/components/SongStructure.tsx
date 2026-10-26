@@ -5,15 +5,17 @@ interface SongStructureProps {
   segments?: SectionSegment[];
   onSeek?: (timestamp: number) => void;
   currentTime?: number;
+  defaultExpanded?: boolean;
 }
 
 export const SongStructure: React.FC<SongStructureProps> = ({
   segments = [],
   onSeek,
   currentTime = 0,
+  defaultExpanded = false,
 }) => {
   // Collapsed by default as requested
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
   if (!segments || segments.length === 0) {
     return null;

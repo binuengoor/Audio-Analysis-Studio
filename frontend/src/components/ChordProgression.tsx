@@ -5,16 +5,18 @@ interface ChordProgressionProps {
   chords?: ChordSegment[];
   onSeek?: (timestamp: number) => void;
   currentTime?: number;
+  defaultExpanded?: boolean;
 }
 
 export const ChordProgression: React.FC<ChordProgressionProps> = ({
   chords = [],
   onSeek,
   currentTime = 0,
+  defaultExpanded = false,
 }) => {
   const [viewMode, setViewMode] = useState<'timeline' | 'summary'>('timeline');
   // Collapsed by default
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
   if (!chords || chords.length === 0) {
     return (

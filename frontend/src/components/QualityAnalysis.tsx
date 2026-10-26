@@ -4,11 +4,12 @@ import { buildFileUrl } from '../config';
 
 interface QualityAnalysisProps {
   quality: QualityResult;
+  defaultExpanded?: boolean;
 }
 
-export const QualityAnalysis: React.FC<QualityAnalysisProps> = ({ quality }) => {
-  // Collapsed by default
-  const [isExpanded, setIsExpanded] = useState(false);
+export const QualityAnalysis: React.FC<QualityAnalysisProps> = ({ quality, defaultExpanded = false }) => {
+  // Collapsed unless the parent (e.g. a tab) asks for it open
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [showFullSpectrogram, setShowFullSpectrogram] = useState(false);
 
   const { container, mastering, authenticity, spectrogram_image_path } = quality;

@@ -14,11 +14,14 @@ Status of the improvement plan from the project audit. Checked items are done.
 - [ ] Verify madmom / BeatNet model licenses for commercial use
 
 ## Phase 2 - UI/UX
-- [ ] Track-first layout: sticky player, tabbed analysis (Overview / Harmony / Structure / Quality / Transform)
-- [ ] Library as a sortable, filterable table (key, BPM, quality, text search)
-- [ ] Per-engine progress + retry, manual BPM/key override, half/double-time toggle
-- [ ] Keyboard shortcuts, accessibility pass (focus, ARIA, contrast), mobile layout
-- [ ] Light/dark theme, Settings page (API key, default rename pattern, formats)
+- [x] Track-first layout: sticky player, tabs (Overview / Harmony / Structure / Quality / Pitch & tempo), compact header with selected-track summary
+- [x] Library: search, key and BPM-range filters, sortable columns, "Mixes with selected", "Needs attention"
+- [x] Manual BPM/key correction with half/double-time buttons (kept across re-analysis)
+- [x] Save & tag card with live filename preview and click-to-insert tokens; mobile order fixed
+- [x] Keyboard shortcuts (`?` for help), tablist/dialog ARIA, focus rings, skip link
+- [ ] Per-engine progress chips (needs a streaming/job-status API from the gateway)
+- [ ] Light theme and a full Settings page (default pattern, formats)
+- [ ] Contrast audit of the 10-11 px helper text
 
 ## Phase 3 - Features
 - [ ] Batch/folder mode + watch folder
