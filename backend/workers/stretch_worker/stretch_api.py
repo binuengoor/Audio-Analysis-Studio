@@ -118,6 +118,13 @@ def version():
 @app.post("/process", response_model=StretchProcessResponse)
 def process_audio(req: StretchProcessRequest):
     file_path = req.file_path
+    # Only process files that live on the shared audio volume
+    real_shared = os.path.realpath(SHARED_DATA_DIR)
+    if os.path.commonpath([real_shared, os.path.realpath(file_path)]) != real_shared:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Source audio file must be located on the shared audio volume"
+        )
     if not os.path.exists(file_path):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

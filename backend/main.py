@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -12,7 +13,8 @@ from config import (
     ensure_directories,
     logger,
 )
-from processor import BatchProcessor
+from processor import BatchProcessor, WorkerError
+from auth import PUBLIC_PATHS, extract_api_key, check_api_key
 from library import LibraryManager
 from api_v1 import router as api_v1_router, set_processor as set_v1_processor
 from routers.studio import (
@@ -88,6 +90,22 @@ X-API-Key: your_secret_api_key
     lifespan=lifespan,
 )
 
+@app.middleware("http")
+async def require_api_key(request: Request, call_next):
+    """
+    Enforces API_KEY / API_KEYS on every route (studio, library, files, health, /api/v1),
+    not just the public API. Open mode when no key is configured.
+    Registered before CORS so CORS stays the outermost layer and 401s carry CORS headers.
+    """
+    if request.method != "OPTIONS" and request.url.path not in PUBLIC_PATHS:
+        error = check_api_key(
+            extract_api_key(request.headers.get("x-api-key"), request.headers.get("authorization"))
+        )
+        if error:
+            return JSONResponse(status_code=401, content={"detail": error})
+    return await call_next(request)
+
+
 # Setup CORS with configuration
 app.add_middleware(
     CORSMiddleware,
@@ -96,6 +114,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(WorkerError)
+async def worker_error_handler(request: Request, exc: WorkerError):
+    """An analysis engine failed: report it instead of returning guessed values."""
+    return JSONResponse(status_code=502, content={"detail": str(exc), "engine": exc.engine})
+
 
 # Mount static files for audio preview streaming and spectrogram viewing
 app.mount("/files/input", StaticFiles(directory=INPUT_DIR), name="input_files")

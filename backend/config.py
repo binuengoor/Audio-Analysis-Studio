@@ -37,7 +37,10 @@ STRETCH_WORKER_URL: str = os.getenv("STRETCH_WORKER_URL", "http://stretch-worker
 REDIS_URL: str = os.getenv("REDIS_URL", "redis://redis:6379/0")
 
 # --- Security & Rate Limiting ---
+# Limit for the public /api/v1 upload endpoints
 MAX_FILE_SIZE_MB: int = int(os.getenv("MAX_FILE_SIZE_MB", "100"))
+# Limit for studio library uploads (large lossless files are expected); 0 disables the limit
+STUDIO_MAX_FILE_SIZE_MB: int = int(os.getenv("STUDIO_MAX_FILE_SIZE_MB", "2048"))
 
 def get_configured_api_keys() -> Set[str]:
     """Dynamically reads configured API keys from environment."""
@@ -53,8 +56,12 @@ def get_configured_api_keys() -> Set[str]:
                 keys.add(cleaned)
     return keys
 
-# CORS Configuration
-ALLOWED_ORIGINS_ENV = os.getenv("ALLOWED_ORIGINS", "*")
+# CORS Configuration. The bundled frontend is served same-origin through nginx and needs no CORS;
+# the defaults only cover the Vite dev server. Set ALLOWED_ORIGINS="*" to allow any origin.
+ALLOWED_ORIGINS_ENV = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000",
+)
 if ALLOWED_ORIGINS_ENV == "*":
     ALLOWED_ORIGINS: List[str] = ["*"]
 else:

@@ -36,15 +36,17 @@ class QualityResult(BaseModel):
 
 class AnalysisResult(BaseModel):
     filename: Optional[str] = None
-    bpm: float
-    bpm_confidence: float = 0.9
-    key_standard: str
-    key_camelot: str
-    key_confidence: float = 0.95
+    # BPM/key fields are None when the corresponding engine failed (see engine_errors)
+    bpm: Optional[float] = None
+    bpm_confidence: Optional[float] = None
+    key_standard: Optional[str] = None
+    key_camelot: Optional[str] = None
+    key_confidence: Optional[float] = None
     duration: float = 0.0
     chords: List[ChordSegment] = []
     quality: Optional[QualityResult] = None
     segments: List[SectionSegment] = []
+    engine_errors: Dict[str, str] = {}
 
 class AnalyzeRequest(BaseModel):
     filename: Optional[str] = None
@@ -76,9 +78,9 @@ class QueueStatus(BaseModel):
 class RenameRequest(BaseModel):
     filename: str
     pattern: str
-    bpm: float
-    key: str
-    camelot: str
+    bpm: Optional[float] = None
+    key: Optional[str] = None
+    camelot: Optional[str] = None
 
 class LibraryEntry(BaseModel):
     id: str
@@ -94,12 +96,13 @@ class LibraryEntry(BaseModel):
 
 class BasicAnalysisResponse(BaseModel):
     filename: str
-    bpm: float
-    bpm_confidence: float
-    key_standard: str
-    key_camelot: str
-    key_confidence: float
+    bpm: Optional[float] = None
+    bpm_confidence: Optional[float] = None
+    key_standard: Optional[str] = None
+    key_camelot: Optional[str] = None
+    key_confidence: Optional[float] = None
     duration_seconds: float
+    engine_errors: Dict[str, str] = {}
 
 
 class KeyAnalysisResponse(BaseModel):
@@ -142,15 +145,16 @@ class QualityAnalysisResponse(BaseModel):
 
 class FullAnalysisResponse(BaseModel):
     filename: str
-    bpm: float
-    bpm_confidence: float
-    key_standard: str
-    key_camelot: str
-    key_confidence: float
+    bpm: Optional[float] = None
+    bpm_confidence: Optional[float] = None
+    key_standard: Optional[str] = None
+    key_camelot: Optional[str] = None
+    key_confidence: Optional[float] = None
     duration_seconds: float
     chords: List[ChordSegment] = []
     quality: Optional[QualityData] = None
     segments: List[SectionSegment] = []
+    engine_errors: Dict[str, str] = {}
 
 
 # --- URL Intake Models ---
@@ -190,8 +194,7 @@ class DownloaderUpdateResponse(BaseModel):
 # --- Rubber Band Pitch Shift & Time Stretch Models ---
 
 class StretchRequest(BaseModel):
-    filename: Optional[str] = None
-    file_path: Optional[str] = None
+    filename: str
     pitch_semitones: float = 0.0
     tempo_ratio: float = 1.0
     target_bpm: Optional[float] = None

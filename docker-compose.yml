@@ -1,3 +1,9 @@
+x-healthcheck-timing: &healthcheck-timing
+  interval: 30s
+  timeout: 5s
+  retries: 3
+  start_period: 60s
+
 services:
   redis:
     image: redis:alpine
@@ -21,26 +27,43 @@ services:
     container_name: gateway
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      # Bound to localhost by default; the UI reaches the gateway through nginx on port 3000.
+      # Set GATEWAY_BIND=0.0.0.0 (together with API_KEY) to expose the REST API on your network.
+      - "${GATEWAY_BIND:-127.0.0.1}:8000:8000"
     volumes:
       - ./data:/app/data/shared_audio
     environment:
       - PYTHONUNBUFFERED=1
       - REDIS_URL=redis://redis:6379/0
+      - API_KEY=${API_KEY:-}
+      - API_KEYS=${API_KEYS:-}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/', timeout=4)"]
+      <<: *healthcheck-timing
     networks:
       backend-net:
         aliases:
           - audio-analysis-backend
           - gateway
     depends_on:
-      - redis
-      - bpm-worker
-      - key-worker
-      - chord-worker
-      - quality-worker
-      - structure-worker
-      - downloader-worker
-      - stretch-worker
+      redis:
+        condition: service_healthy
+      # Workers only need to be started: the gateway reports engines that are down instead of blocking
+      bpm-worker:
+        condition: service_started
+      key-worker:
+        condition: service_started
+      chord-worker:
+        condition: service_started
+      quality-worker:
+        condition: service_started
+      structure-worker:
+        condition: service_started
+      downloader-worker:
+        condition: service_started
+      stretch-worker:
+        condition: service_started
 
   celery-worker:
     build: ./backend
@@ -57,17 +80,29 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - OMP_NUM_THREADS=4
       - OPENBLAS_NUM_THREADS=4
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A celery_tasks inspect ping -d celery@$$HOSTNAME --timeout 5 | grep -q pong"]
+      <<: *healthcheck-timing
     networks:
       - backend-net
     depends_on:
-      - redis
-      - bpm-worker
-      - key-worker
-      - chord-worker
-      - quality-worker
-      - structure-worker
-      - downloader-worker
-      - stretch-worker
+      redis:
+        condition: service_healthy
+      # Workers only need to be started: the gateway reports engines that are down instead of blocking
+      bpm-worker:
+        condition: service_started
+      key-worker:
+        condition: service_started
+      chord-worker:
+        condition: service_started
+      quality-worker:
+        condition: service_started
+      structure-worker:
+        condition: service_started
+      downloader-worker:
+        condition: service_started
+      stretch-worker:
+        condition: service_started
 
   structure-worker:
     build: ./backend/workers/structure_worker
@@ -84,6 +119,9 @@ services:
       - PYTHONUNBUFFERED=1
       - OMP_NUM_THREADS=4
       - OPENBLAS_NUM_THREADS=4
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8005/health', timeout=4)"]
+      <<: *healthcheck-timing
     networks:
       - backend-net
 
@@ -102,6 +140,9 @@ services:
       - PYTHONUNBUFFERED=1
       - OMP_NUM_THREADS=4
       - OPENBLAS_NUM_THREADS=4
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health', timeout=4)"]
+      <<: *healthcheck-timing
     networks:
       - backend-net
 
@@ -120,6 +161,9 @@ services:
       - PYTHONUNBUFFERED=1
       - OMP_NUM_THREADS=4
       - OPENBLAS_NUM_THREADS=4
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=4)"]
+      <<: *healthcheck-timing
     networks:
       - backend-net
 
@@ -139,6 +183,9 @@ services:
       - OMP_NUM_THREADS=4
       - OPENBLAS_NUM_THREADS=4
       - TORCH_NUM_THREADS=4
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health', timeout=4)"]
+      <<: *healthcheck-timing
     networks:
       - backend-net
 
@@ -157,6 +204,9 @@ services:
       - PYTHONUNBUFFERED=1
       - OMP_NUM_THREADS=4
       - OPENBLAS_NUM_THREADS=4
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health', timeout=4)"]
+      <<: *healthcheck-timing
     networks:
       - backend-net
 
@@ -175,6 +225,9 @@ services:
       - PYTHONUNBUFFERED=1
       - OMP_NUM_THREADS=4
       - OPENBLAS_NUM_THREADS=4
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8007/health', timeout=4)"]
+      <<: *healthcheck-timing
     networks:
       - backend-net
 
@@ -195,6 +248,9 @@ services:
       - AUTO_UPDATE_YTDLP=true
       - SHARED_DATA_DIR=/app/data/shared_audio
       - COOKIES_FILE=/app/cookies/cookies.txt
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8006/health', timeout=4)"]
+      <<: *healthcheck-timing
     networks:
       - backend-net
 
@@ -207,10 +263,18 @@ services:
     restart: unless-stopped
     ports:
       - "3000:80"
+    environment:
+      # nginx attaches this key to /api and /files requests so the browser UI works when
+      # gateway authentication is enabled. Anyone who can reach port 3000 can use the UI.
+      - API_KEY=${API_KEY:-}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost/"]
+      <<: *healthcheck-timing
     networks:
       - backend-net
     depends_on:
-      - gateway
+      gateway:
+        condition: service_started
 
 networks:
   backend-net:

@@ -9,6 +9,74 @@ export const stopAllPolling = () => {
   activePollIntervals.clear();
 };
 
+const JOB_POLL_INTERVAL_MS = 2000;
+// Give up on jobs that never report a final state (lost task, worker crash) after this long
+const JOB_POLL_TIMEOUT_MS = 30 * 60 * 1000;
+
+interface JobPollSummary {
+  failed: number;
+  timedOut: number;
+}
+
+interface JobPollHandlers {
+  onSuccess: (result: AnalysisResult) => Promise<void> | void;
+  onFailure: (jobId: string, error: string) => Promise<void> | void;
+  onProgress?: (remaining: number, total: number) => void;
+  onFinished: (summary: JobPollSummary) => Promise<void> | void;
+}
+
+/** Polls Celery jobs until each succeeds, fails, or the timeout expires. */
+const pollJobs = (jobIds: string[], handlers: JobPollHandlers) => {
+  const pending = new Set(jobIds);
+  const startedAt = Date.now();
+  let failed = 0;
+  let tickInFlight = false;
+
+  const intervalId = setInterval(async () => {
+    // Skip a tick if the previous one is still waiting on the network
+    if (tickInFlight) return;
+    tickInFlight = true;
+    try {
+      for (const jobId of Array.from(pending)) {
+        try {
+          const jobRes = await fetch(buildBackendUrl(`/api/jobs/${jobId}`));
+          if (!jobRes.ok) continue;
+          const jobData = await jobRes.json();
+          if (jobData.status === 'SUCCESS') {
+            pending.delete(jobId);
+            await handlers.onSuccess(jobData.result as AnalysisResult);
+          } else if (jobData.status === 'FAILURE') {
+            pending.delete(jobId);
+            failed += 1;
+            await handlers.onFailure(jobId, jobData.error || 'Unknown error');
+          }
+        } catch (e: unknown) {
+          console.error(`Error polling job ${jobId}`, e);
+        }
+      }
+
+      const timedOut = Date.now() - startedAt > JOB_POLL_TIMEOUT_MS ? pending.size : 0;
+      if (pending.size === 0 || timedOut > 0) {
+        clearInterval(intervalId);
+        activePollIntervals.delete(intervalId);
+        await handlers.onFinished({ failed, timedOut });
+      } else {
+        handlers.onProgress?.(pending.size, jobIds.length);
+      }
+    } finally {
+      tickInFlight = false;
+    }
+  }, JOB_POLL_INTERVAL_MS);
+
+  activePollIntervals.add(intervalId);
+};
+
+/** Names the engines that failed for a result, e.g. "key, chords", or null if all succeeded. */
+export const failedEngines = (result: AnalysisResult | null | undefined): string | null => {
+  const engines = Object.keys(result?.engine_errors ?? {});
+  return engines.length > 0 ? engines.join(', ') : null;
+};
+
 const revokeUrlIfBlob = (url: string | null) => {
   if (url && url.startsWith('blob:')) {
     try {
@@ -40,7 +108,7 @@ interface AppState {
   importAudioFromUrl: (url: string, audioFormat?: string) => Promise<void>;
   updateFileStatus: (id: string, status: AudioFile['status']) => void;
   pollBatchStatus: () => Promise<void>;
-  processOutput: (filename: string, pattern: string, bpm: number, key: string, camelot: string) => Promise<void>;
+  processOutput: (filename: string, pattern: string, bpm: number | null, key: string | null, camelot: string | null) => Promise<void>;
   deleteInput: (id: string) => Promise<void>;
   deleteOutput: (id: string) => Promise<void>;
   deleteEntry: (id: string) => Promise<void>;
@@ -160,7 +228,12 @@ export const useAudioStore = create<AppState>((set, get) => ({
 
       set({ activeAnalysis: result, isAnalyzing: false });
       await get().fetchLibrary();
-      get().showToast(`Re-analysis complete for ${filename}`, 'success');
+      const failed = failedEngines(result);
+      if (failed) {
+        get().showToast(`Re-analysis finished for ${filename}, but these engines failed: ${failed}`, 'warning', 8000);
+      } else {
+        get().showToast(`Re-analysis complete for ${filename}`, 'success');
+      }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       console.error('Re-analysis failed:', msg);
@@ -238,48 +311,39 @@ export const useAudioStore = create<AppState>((set, get) => ({
         return;
       }
 
-      // Poll each job every 2 seconds until completed
-      const pendingJobIds = new Set(jobIds);
-      const totalJobs = jobIds.length;
-
-      const pollInterval = setInterval(async () => {
-        for (const jobId of Array.from(pendingJobIds)) {
-          try {
-            const jobRes = await fetch(buildBackendUrl(`/api/jobs/${jobId}`));
-            if (jobRes.ok) {
-              const jobData = await jobRes.json();
-              if (jobData.status === 'SUCCESS') {
-                pendingJobIds.delete(jobId);
-                const completedAnalysis: AnalysisResult = jobData.result;
-                if (get().activeTitle === completedAnalysis.filename) {
-                  set({ activeAnalysis: completedAnalysis });
-                }
-                await get().fetchLibrary();
-              } else if (jobData.status === 'FAILURE') {
-                console.error(`Job ${jobId} failed:`, jobData.error);
-                pendingJobIds.delete(jobId);
-              }
-            }
-          } catch (e: unknown) {
-            console.error(`Error polling job ${jobId}`, e);
+      const failedEngineFiles: string[] = [];
+      pollJobs(jobIds, {
+        onSuccess: async (completedAnalysis) => {
+          if (get().activeTitle === completedAnalysis.filename) {
+            set({ activeAnalysis: completedAnalysis });
           }
-        }
-
-        const remaining = pendingJobIds.size;
-        const progress = Math.round(((totalJobs - remaining) / totalJobs) * 100);
-
-        if (remaining === 0) {
-          clearInterval(pollInterval);
-          activePollIntervals.delete(pollInterval);
+          if (failedEngines(completedAnalysis) && completedAnalysis.filename) {
+            failedEngineFiles.push(completedAnalysis.filename);
+          }
+          await get().fetchLibrary();
+        },
+        onFailure: async (jobId, error) => {
+          console.error(`Job ${jobId} failed:`, error);
+          get().showToast(`Analysis failed: ${error}`, 'error', 8000);
+          await get().fetchLibrary();
+        },
+        onProgress: (remaining, total) => {
+          set({ processing: true, progress: Math.round(((total - remaining) / total) * 100) });
+        },
+        onFinished: async ({ failed, timedOut }) => {
           set({ processing: false, isAnalyzing: false, progress: 100 });
           await get().fetchLibrary();
-          get().showToast('Batch analysis completed successfully!', 'success');
-        } else {
-          set({ processing: true, progress });
-        }
-      }, 2000);
-
-      activePollIntervals.add(pollInterval);
+          if (timedOut > 0) {
+            get().showToast(`${timedOut} analysis job(s) did not finish in time. Check the service status.`, 'warning', 8000);
+          } else if (failed > 0) {
+            get().showToast(`Batch finished: ${failed} of ${jobIds.length} file(s) failed.`, 'error', 8000);
+          } else if (failedEngineFiles.length > 0) {
+            get().showToast(`Batch finished, but some engines failed for: ${failedEngineFiles.join(', ')}`, 'warning', 8000);
+          } else {
+            get().showToast('Batch analysis completed successfully!', 'success');
+          }
+        },
+      });
 
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -337,37 +401,31 @@ export const useAudioStore = create<AppState>((set, get) => ({
       get().showToast(`Imported audio stream for: ${intakeData.title || entry.filename}`, 'success');
 
       if (jobId) {
-        // Poll the Celery job until completion
-        const pollJob = setInterval(async () => {
-          try {
-            const jobRes = await fetch(buildBackendUrl(`/api/jobs/${jobId}`));
-            if (jobRes.ok) {
-              const jobData = await jobRes.json();
-              if (jobData.status === 'SUCCESS') {
-                clearInterval(pollJob);
-                activePollIntervals.delete(pollJob);
-                const completedAnalysis: AnalysisResult = jobData.result;
-                if (get().activeTitle === completedAnalysis.filename) {
-                  set({ activeAnalysis: completedAnalysis });
-                }
-                set({ processing: false, isAnalyzing: false, progress: 100 });
-                await get().fetchLibrary();
-                get().showToast(`Analysis completed for ${intakeData.title || entry.filename}`, 'success');
-              } else if (jobData.status === 'FAILURE') {
-                clearInterval(pollJob);
-                activePollIntervals.delete(pollJob);
-                set({ processing: false, isAnalyzing: false });
-                console.error(`Job ${jobId} failed:`, jobData.error);
-                await get().fetchLibrary();
-                get().showToast(`Analysis failed: ${jobData.error}`, 'error');
-              }
+        const title = intakeData.title || entry.filename;
+        pollJobs([jobId], {
+          onSuccess: async (completedAnalysis) => {
+            if (get().activeTitle === completedAnalysis.filename) {
+              set({ activeAnalysis: completedAnalysis });
             }
-          } catch (e: unknown) {
-            console.error(`Error polling job ${jobId}`, e);
-          }
-        }, 2000);
-
-        activePollIntervals.add(pollJob);
+            const failed = failedEngines(completedAnalysis);
+            if (failed) {
+              get().showToast(`Analysis finished for ${title}, but these engines failed: ${failed}`, 'warning', 8000);
+            } else {
+              get().showToast(`Analysis completed for ${title}`, 'success');
+            }
+          },
+          onFailure: (failedJobId, error) => {
+            console.error(`Job ${failedJobId} failed:`, error);
+            get().showToast(`Analysis failed: ${error}`, 'error', 8000);
+          },
+          onFinished: async ({ timedOut }) => {
+            set({ processing: false, isAnalyzing: false, progress: 100 });
+            await get().fetchLibrary();
+            if (timedOut > 0) {
+              get().showToast(`Analysis for ${title} did not finish in time. Check the service status.`, 'warning', 8000);
+            }
+          },
+        });
       } else {
         set({ processing: false, isAnalyzing: false, progress: 100 });
       }
@@ -419,7 +477,7 @@ export const useAudioStore = create<AppState>((set, get) => ({
     }
   },
 
-  processOutput: async (filename: string, pattern: string, bpm: number, key: string, camelot: string) => {
+  processOutput: async (filename: string, pattern: string, bpm: number | null, key: string | null, camelot: string | null) => {
     try {
       const response = await fetch(buildBackendUrl('/api/process'), {
         method: 'POST',

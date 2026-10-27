@@ -8,13 +8,15 @@ import { QualityAnalysis } from './components/QualityAnalysis';
 import { ServiceHealthBadge } from './components/ServiceHealthBadge';
 import { Library } from './components/Library';
 import { ToastContainer } from './components/Toast';
-import { useAudioStore } from './store/useAudioStore';
+import { useAudioStore, failedEngines } from './store/useAudioStore';
 
 function App() {
   const {
     activeTitle,
     activeAnalysis,
     activeAudioUrl,
+    activeEntryId,
+    library,
     isAnalyzing,
     fetchLibrary,
     reanalyzeTrack,
@@ -25,6 +27,9 @@ function App() {
   const [showTagHelp, setShowTagHelp] = useState(false);
   const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
   const playerRef = useRef<WaveformPlayerHandle>(null);
+  const activeEntryFailed =
+    !isAnalyzing && library.find((entry) => entry.id === activeEntryId)?.status === 'error';
+  const failedEngineList = failedEngines(activeAnalysis);
 
   // Fetch library on initial mount
   useEffect(() => {
@@ -148,11 +153,11 @@ function App() {
                   <div className="grid grid-cols-2 gap-2 text-center pt-2 border-t border-slate-800">
                     <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800/80">
                       <div className="text-[10px] text-slate-400 uppercase font-semibold">Key</div>
-                      <div className="text-base font-bold text-blue-300 mt-0.5">{activeAnalysis.key_camelot}</div>
+                      <div className="text-base font-bold text-blue-300 mt-0.5">{activeAnalysis.key_camelot ?? '—'}</div>
                     </div>
                     <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800/80">
                       <div className="text-[10px] text-slate-400 uppercase font-semibold">Tempo</div>
-                      <div className="text-base font-bold text-purple-300 mt-0.5">{activeAnalysis.bpm} BPM</div>
+                      <div className="text-base font-bold text-purple-300 mt-0.5">{activeAnalysis.bpm != null ? `${activeAnalysis.bpm} BPM` : '—'}</div>
                     </div>
                   </div>
                 )}
@@ -281,8 +286,8 @@ function App() {
                       <div className="text-[11px] text-blue-300 uppercase font-bold tracking-wider mb-1">
                         Camelot Key
                       </div>
-                      <div className="text-3xl font-extrabold text-white">{activeAnalysis.key_camelot}</div>
-                      <div className="text-[11px] text-slate-400 mt-1 truncate">{activeAnalysis.key_standard}</div>
+                      <div className="text-3xl font-extrabold text-white">{activeAnalysis.key_camelot ?? '—'}</div>
+                      <div className="text-[11px] text-slate-400 mt-1 truncate">{activeAnalysis.key_standard ?? 'Key engine failed'}</div>
                     </div>
 
                     {/* BPM */}
@@ -290,9 +295,13 @@ function App() {
                       <div className="text-[11px] text-purple-300 uppercase font-bold tracking-wider mb-1">
                         BPM (Tempo)
                       </div>
-                      <div className="text-3xl font-extrabold text-white">{activeAnalysis.bpm}</div>
+                      <div className="text-3xl font-extrabold text-white">{activeAnalysis.bpm ?? '—'}</div>
                       <div className="text-[11px] text-slate-400 mt-1">
-                        {activeAnalysis.bpm_confidence ? `${Math.round(activeAnalysis.bpm_confidence * 100)}% conf` : 'BeatNet Offline'}
+                        {activeAnalysis.bpm == null
+                          ? 'BPM engine failed'
+                          : activeAnalysis.bpm_confidence != null
+                            ? `${Math.round(activeAnalysis.bpm_confidence * 100)}% conf`
+                            : 'BeatNet'}
                       </div>
                     </div>
 
@@ -301,9 +310,13 @@ function App() {
                       <div className="text-[11px] text-slate-400 uppercase font-bold tracking-wider mb-1">
                         Standard Key
                       </div>
-                      <div className="text-lg font-bold text-white mt-1 truncate">{activeAnalysis.key_standard}</div>
+                      <div className="text-lg font-bold text-white mt-1 truncate">{activeAnalysis.key_standard ?? '—'}</div>
                       <div className="text-[11px] text-slate-400 mt-1">
-                        {activeAnalysis.key_confidence ? `${Math.round(activeAnalysis.key_confidence * 100)}% conf` : 'KeyNet'}
+                        {activeAnalysis.key_standard == null
+                          ? 'Key engine failed'
+                          : activeAnalysis.key_confidence != null
+                            ? `${Math.round(activeAnalysis.key_confidence * 100)}% conf`
+                            : 'KeyNet'}
                       </div>
                     </div>
 
@@ -320,12 +333,26 @@ function App() {
                       </div>
                     </div>
                   </div>
+                ) : activeEntryFailed ? (
+                  <div role="alert" className="bg-red-950/30 p-6 rounded-2xl border border-red-500/30 text-center space-y-2">
+                    <p className="text-sm font-semibold text-red-200">Analysis failed for this track.</p>
+                    <p className="text-xs text-slate-400">
+                      Check the service status badge, then use Re-analyze to try again.
+                    </p>
+                  </div>
                 ) : (
                   <div className="bg-slate-900/60 p-8 rounded-2xl border border-slate-800 text-center space-y-3">
                     <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-500"></div>
                     <p className="text-sm font-semibold text-slate-300">
                       Analyzing audio with AI models (BeatNet, MusicalKeyCNN, Madmom, Structure, Quality)...
                     </p>
+                  </div>
+                )}
+
+                {activeAnalysis && failedEngineList && (
+                  <div role="status" className="bg-amber-950/30 px-4 py-3 rounded-xl border border-amber-500/30 text-xs text-amber-200">
+                    Some analysis engines failed ({failedEngineList}), so their results are missing. They were not
+                    written to the file's tags. Re-analyze once the services are healthy.
                   </div>
                 )}
 
@@ -354,9 +381,9 @@ function App() {
                 {activeTitle && (
                   <PitchTimeStretch
                     filename={activeTitle}
-                    detectedBpm={activeAnalysis?.bpm}
-                    detectedKeyStandard={activeAnalysis?.key_standard}
-                    detectedKeyCamelot={activeAnalysis?.key_camelot}
+                    detectedBpm={activeAnalysis?.bpm ?? undefined}
+                    detectedKeyStandard={activeAnalysis?.key_standard ?? undefined}
+                    detectedKeyCamelot={activeAnalysis?.key_camelot ?? undefined}
                   />
                 )}
 

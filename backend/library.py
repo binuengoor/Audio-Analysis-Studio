@@ -183,6 +183,25 @@ class LibraryManager:
             )
             conn.commit()
 
+    def set_status(self, id: str, status: str):
+        with self._get_connection() as conn:
+            conn.execute("UPDATE library SET status = ? WHERE id = ?;", (status, id))
+            conn.commit()
+
+    def set_input(self, id: str, input_filename: str):
+        """Points an entry at a freshly uploaded/downloaded input file and resets its status."""
+        with self._get_connection() as conn:
+            conn.execute(
+                "UPDATE library SET input_path = ?, status = 'uploaded' WHERE id = ?;",
+                (input_filename, id),
+            )
+            conn.commit()
+
+    def clear_all(self):
+        with self._get_connection() as conn:
+            conn.execute("DELETE FROM library;")
+            conn.commit()
+
     def set_output(self, id: str, output_filename: str):
         with self._get_connection() as conn:
             conn.execute(

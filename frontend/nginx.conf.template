@@ -1,3 +1,5 @@
+# Rendered by the nginx image's envsubst entrypoint into /etc/nginx/conf.d/default.conf.
+# Only ${API_KEY} is substituted; nginx's own $variables are left untouched.
 server {
     listen 80;
     server_name _;
@@ -28,6 +30,9 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        # Attach the gateway API key server-side so it is never exposed to the browser
+        # (an empty value means the header is not sent and the gateway runs in open mode)
+        proxy_set_header X-API-Key "${API_KEY}";
     }
 
     location /files/ {
@@ -40,5 +45,8 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        # Attach the gateway API key server-side so it is never exposed to the browser
+        # (an empty value means the header is not sent and the gateway runs in open mode)
+        proxy_set_header X-API-Key "${API_KEY}";
     }
 }

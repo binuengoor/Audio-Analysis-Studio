@@ -92,18 +92,26 @@ def test_bpm_worker_isolation(synthetic_audio_file):
         assert "bpm" in data
         assert 115.0 <= data["bpm"] <= 125.0
 
-def test_key_worker_isolation(synthetic_audio_file):
+def test_key_worker_reports_missing_model(synthetic_audio_file):
     """
-    Acceptance Criteria 2b: Key Worker returns A Minor / 8A.
+    Key Worker must report an error instead of a guessed key when its model is unavailable.
     """
     client = TestClient(key_api.app)
     with patch("key_api.get_model", return_value=None):
         response = client.post("/analyze", json={"file_path": synthetic_audio_file})
-        assert response.status_code == 200
-        data = response.json()
-        assert "key_camelot" in data or "key" in data
-        camelot = data.get("key_camelot") or data.get("key")
-        assert camelot in ["8A", "8B", "1A"] or "minor" in data.get("key_standard", "").lower()
+        assert response.status_code == 503
+        assert "checkpoint" in response.json()["detail"]
+
+def test_bpm_worker_reports_no_beat(synthetic_audio_file):
+    """
+    BPM Worker must report an error instead of a default 120 BPM when no beat is detected.
+    """
+    client = TestClient(bpm_api.app)
+    mock_estimator = MagicMock()
+    mock_estimator.process.return_value = None
+    with patch("bpm_api.get_estimator", return_value=mock_estimator):
+        response = client.post("/analyze", json={"file_path": synthetic_audio_file})
+        assert response.status_code == 422
 
 def test_chord_worker_isolation(synthetic_audio_file):
     """
@@ -186,7 +194,7 @@ async def test_concurrency_parallel_execution(tmp_path, synthetic_audio_file):
     """
     processor = BatchProcessor(str(tmp_path))
 
-    async def mock_worker_call(client, url, file_path):
+    async def mock_worker_call(client, engine, url, file_path):
         # Introduce a 0.2 second artificial delay to test concurrency
         await asyncio.sleep(0.2)
         if "8001" in url:
@@ -256,7 +264,9 @@ def test_stretch_worker_isolation(synthetic_audio_file):
         "preserve_formants": True,
         "output_format": "wav"
     }
-    response = client.post("/process", json=req_payload)
+    # The worker only accepts files on its shared volume; point it at the fixture's directory
+    with patch.object(stretch_api, "SHARED_DATA_DIR", os.path.dirname(synthetic_audio_file)):
+        response = client.post("/process", json=req_payload)
     assert response.status_code == 200
     data = response.json()
     assert data["success"] is True
@@ -265,3 +275,13 @@ def test_stretch_worker_isolation(synthetic_audio_file):
     assert data["tempo_ratio"] == 1.25
     assert data["target_bpm"] == 150.0
     assert os.path.exists(data["output_file_path"])
+
+
+def test_stretch_worker_rejects_paths_outside_shared_volume(tmp_path):
+    """The stretch worker must not read files outside the shared audio volume."""
+    client = TestClient(stretch_api.app)
+    outside = tmp_path / "outside.wav"
+    outside.write_bytes(b"not audio")
+    with patch.object(stretch_api, "SHARED_DATA_DIR", str(tmp_path / "shared")):
+        response = client.post("/process", json={"file_path": str(outside)})
+    assert response.status_code == 400

@@ -138,10 +138,10 @@ export const Library: React.FC = () => {
                       <div className="space-y-1.5">
                         <div className="flex items-center gap-2">
                           <span className="px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-200 font-bold text-xs border border-blue-500/30">
-                            {entry.analysis.key_camelot}
+                            {entry.analysis.key_camelot ?? '—'}
                           </span>
                           <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-200 font-bold text-xs border border-purple-500/30">
-                            {entry.analysis.bpm} BPM
+                            {entry.analysis.bpm != null ? `${entry.analysis.bpm} BPM` : '— BPM'}
                           </span>
                           <span className="text-xs text-slate-400">
                             {entry.analysis.key_standard}
@@ -171,8 +171,12 @@ export const Library: React.FC = () => {
                           </div>
                         )}
                       </div>
-                    ) : (
+                    ) : entry.status === 'error' ? (
+                      <span className="text-xs text-red-400">Analysis failed</span>
+                    ) : entry.status === 'processing' ? (
                       <span className="text-xs text-amber-400/80 animate-pulse">Analyzing...</span>
+                    ) : (
+                      <span className="text-xs text-slate-500 italic">Not analyzed</span>
                     )}
                   </td>
 

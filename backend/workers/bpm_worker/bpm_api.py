@@ -48,8 +48,8 @@ def analyze(request: AnalyzeRequest):
         model = get_estimator()
         output = model.process(file_path)
         
-        bpm = 120.0
-        confidence = 0.85
+        bpm = None
+        confidence = 0.0
 
         if output is not None and len(output) > 1:
             # BeatNet offline output shape is (N, 2): column 0 is time (seconds), column 1 is beat/downbeat index
@@ -66,7 +66,13 @@ def analyze(request: AnalyzeRequest):
                     std_dev = float(np.std(valid_intervals))
                     confidence = round(max(0.5, min(0.99, 1.0 - (std_dev / (median_interval + 1e-6)))), 2)
 
+        if bpm is None:
+            # Never report a guessed tempo when no stable beat was detected
+            raise HTTPException(status_code=422, detail="No stable beat detected in audio")
+
         return BPMResponse(bpm=bpm, bpm_confidence=confidence)
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"BPM analysis failed: {str(e)}")

@@ -133,12 +133,13 @@ def analyze(request: AnalyzeRequest):
                 key=camelot_str
             )
         else:
-            return KeyResponse(
-                key_camelot="8A",
-                key_standard="A minor",
-                key_confidence=0.5,
-                key="8A"
+            # Never report a guessed key when the model is unavailable
+            raise HTTPException(
+                status_code=503,
+                detail="Key model checkpoint is not loaded (checkpoints/keynet.pt missing or failed to load)"
             )
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Key analysis failed: {str(e)}")
