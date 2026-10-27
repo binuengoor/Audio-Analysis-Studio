@@ -29,7 +29,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
           pip install librosa soundfile pyloudnorm flac-detective matplotlib scikit-learn
-          pip install pytest pytest-asyncio
+          pip install pytest pytest-asyncio ruff
+
+      - name: Lint (syntax errors & undefined names)
+        run: |
+          ruff check --select E9,F63,F7,F82 backend
 
       - name: Run Backend Unit Tests
         run: |
@@ -44,7 +48,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
@@ -52,6 +56,47 @@ jobs:
         run: |
           npm --prefix frontend ci
 
+      - name: Run Frontend Unit Tests
+        run: |
+          npm --prefix frontend test
+
       - name: Run Frontend Typecheck & Build
         run: |
           npm --prefix frontend run build
+
+  build-images:
+    # Builds the lightweight images on every PR so Dockerfile, nginx template and
+    # .dockerignore regressions are caught before merge (heavy ML workers build on publish)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: gateway
+            context: ./backend
+          - image: frontend
+            context: ./frontend
+          - image: stretch-worker
+            context: ./backend/workers/stretch_worker
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.image }} image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.context }}/Dockerfile
+          push: false
+          load: ${{ matrix.image == 'frontend' }}
+          tags: audio-analysis-studio-${{ matrix.image }}:ci
+          cache-from: type=gha,scope=${{ matrix.image }}
+
+      - name: Verify nginx renders the API key template
+        if: matrix.image == 'frontend'
+        run: |
+          docker run --rm --add-host audio-analysis-backend:127.0.0.1 -e API_KEY=ci-key audio-analysis-studio-frontend:ci \
+            sh -c '/docker-entrypoint.sh nginx -t && grep -q "X-API-Key \"ci-key\"" /etc/nginx/conf.d/default.conf'

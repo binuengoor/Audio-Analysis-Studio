@@ -77,7 +77,8 @@ High-performance REST API for audio analysis, metadata extraction, and multi-eng
 * **URL Audio Ingestion**: yt-dlp + static FFmpeg high-fidelity stream extraction
 
 ### Authentication
-Include your API Key in the `X-API-Key` header on all `/api/v1/*` requests:
+When `API_KEY`/`API_KEYS` is configured, include your API Key in the `X-API-Key` header
+(or `Authorization: Bearer <key>`) on every request except `/`, `/docs`, `/redoc` and `/openapi.json`:
 ```http
 X-API-Key: your_secret_api_key
 ```

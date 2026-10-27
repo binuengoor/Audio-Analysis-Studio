@@ -171,7 +171,8 @@ export const QualityAnalysis: React.FC<QualityAnalysisProps> = ({ quality }) => 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-800 pb-3">
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="flex items-center gap-2.5 text-left group focus:outline-none"
+          aria-expanded={isExpanded}
+          className="flex items-center gap-2.5 text-left group rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/70"
         >
           <div className="p-2 bg-emerald-500/15 rounded-lg border border-emerald-500/30 text-emerald-300 group-hover:border-emerald-400 transition-colors">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

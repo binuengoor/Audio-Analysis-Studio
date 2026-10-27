@@ -11,8 +11,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Clone MusicalKeyCNN repository directly (No-fork strategy)
-RUN git clone https://github.com/a1ex90/MusicalKeyCNN.git /app
+# Clone MusicalKeyCNN at a pinned commit (No-fork strategy) so builds are reproducible
+# and upstream changes can't silently break the injected API wrapper
+ARG MUSICAL_KEY_CNN_COMMIT=61d8fc170f262410f66a12057adffc5aceea0b2c
+RUN git clone https://github.com/a1ex90/MusicalKeyCNN.git /app \
+    && git -C /app checkout --quiet "$MUSICAL_KEY_CNN_COMMIT"
 
 # Upgrade pip and install PyTorch and dependencies
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel

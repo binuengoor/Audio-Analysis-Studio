@@ -148,6 +148,35 @@ export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerPro
     }
   }, [segments, isReady, startTime, endTime]);
 
+  // Keyboard shortcuts: Space toggles playback, Left/Right arrows seek 5 seconds.
+  // Ignored while typing or when a control has focus (Space already activates focused buttons).
+  useEffect(() => {
+    if (!isReady) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        event.altKey || event.ctrlKey || event.metaKey ||
+        target?.closest('input, textarea, select, button, a, [contenteditable="true"]')
+      ) {
+        return;
+      }
+      const ws = wavesurfer.current;
+      if (!ws) return;
+      if (event.key === ' ') {
+        event.preventDefault();
+        ws.playPause();
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        ws.setTime(Math.max(0, ws.getCurrentTime() - 5));
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        ws.setTime(Math.min(ws.getDuration(), ws.getCurrentTime() + 5));
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isReady]);
+
   const togglePlayPause = () => {
     if (wavesurfer.current) {
       wavesurfer.current.playPause();
@@ -174,6 +203,8 @@ export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerPro
         <button
           onClick={togglePlayPause}
           disabled={!isReady}
+          aria-keyshortcuts="Space"
+          title="Play/Pause (Space). Arrow keys seek 5s."
           className={`
             px-6 py-2 rounded-full font-bold transition-all flex items-center gap-2 text-sm shadow-lg
             ${isReady 

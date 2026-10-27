@@ -21,7 +21,7 @@ A high-performance audio analysis dashboard powered by an asynchronous **multi-e
 
 - **Multi-Engine Microservices Architecture:**
   - **Tempo & BPM Detection:** [BeatNet](https://github.com/mjhydri/BeatNet) state-of-the-art DBN (Dynamic Bayesian Network) beat and downbeat tracking engine (`bpm-worker:8001`).
-  - **Key & Camelot Detection:** [MusicalKeyCNN](https://github.com/danielfriis/musical-key-cnn) deep neural network predicting both Camelot wheel notations (`12A`, `8B`, etc.) and Standard Key (`C# minor`, `F major`, etc.) (`key-worker:8002`).
+  - **Key & Camelot Detection:** [MusicalKeyCNN](https://github.com/a1ex90/MusicalKeyCNN) deep neural network predicting both Camelot wheel notations (`12A`, `8B`, etc.) and Standard Key (`C# minor`, `F major`, etc.) (`key-worker:8002`).
   - **Chord Progression Recognition:** [Madmom](https://github.com/CPJKU/madmom) CNN + CRF (Conditional Random Field) chord segmentation and harmonic progression modeling (`chord-worker:8003`).
   - **Song Structural Segmentation Engine:** [Librosa](https://librosa.org/) & `scikit-learn` beat-synchronous CQT Chroma + MFCC Laplacian agglomerative segmentation detecting macro song sections (`Intro`, `Verse`, `Chorus`, `Bridge`, `Outro`) (`structure-worker:8005`).
   - **Audio Quality & Bitrate Engine:** "WhatsMyBitrate"-style inspection via `flac-detective`, `pyloudnorm`, `soundfile`, and `mutagen` extracting container properties, integrated LUFS loudness, true peak dBFS, cutoff frequency, and authenticity verdicts (`quality-worker:8004`).
@@ -52,8 +52,11 @@ A high-performance audio analysis dashboard powered by an asynchronous **multi-e
   - Workbox Service Worker caching for instant loading of the UI shell and static assets.
   - Automatic background service worker cache updates on new releases.
 
+- **Honest Results When an Engine Fails:**
+  - If a worker is down or cannot produce a result, its fields are left empty and the failure is listed in `engine_errors` (and shown in the UI). The app never substitutes placeholder values, and only detected values are written to file tags.
+
 - **Apple Silicon & Multi-Architecture Native Support:**
-  - Fully optimized for ARM64 (Apple Silicon M1/M2/M3/M4) and AMD64 with OpenBLAS hardware acceleration and multi-threaded linear algebra.
+  - Local builds (`docker compose up --build`) run natively on ARM64 (Apple Silicon M1/M2/M3/M4) and AMD64 with OpenBLAS hardware acceleration and multi-threaded linear algebra. Prebuilt GHCR images are currently published for `linux/amd64` only.
 
 ---
 
@@ -118,7 +121,7 @@ docker compose up -d
 ```
 
 * **Frontend UI:** [http://localhost:3000](http://localhost:3000)
-* **API Gateway:** [http://localhost:8000](http://localhost:8000)
+* **API Gateway:** [http://localhost:8000](http://localhost:8000) (bound to `127.0.0.1` by default; see [Configuration](#configuration))
 * **BPM Worker:** [http://localhost:8001](http://localhost:8001)
 * **Key Worker:** [http://localhost:8002](http://localhost:8002)
 * **Chord Worker:** [http://localhost:8003](http://localhost:8003)
@@ -143,12 +146,31 @@ All images are continuously built and published to `ghcr.io`:
 * `ghcr.io/binuengoor/audio-analysis-studio-chord-worker:latest`
 * `ghcr.io/binuengoor/audio-analysis-studio-structure-worker:latest`
 * `ghcr.io/binuengoor/audio-analysis-studio-quality-worker:latest`
+* `ghcr.io/binuengoor/audio-analysis-studio-downloader-worker:latest`
+* `ghcr.io/binuengoor/audio-analysis-studio-stretch-worker:latest`
 
 To run prebuilt images without local compiling, uncomment the `image: ghcr.io/...` lines in `docker-compose.yml` and run:
 ```bash
 docker compose pull
 docker compose up -d
 ```
+
+### 4. Configuration
+
+Set these in a `.env` file next to `docker-compose.yml` (or export them before `docker compose up`):
+
+| Variable | Default | Purpose |
+| :--- | :--- | :--- |
+| `API_KEY` | _(unset)_ | Enables authentication on **every** gateway route (UI endpoints, library, `/files`, health and `/api/v1`). The frontend's nginx attaches it server-side, so the browser UI keeps working without exposing the key. |
+| `API_KEYS` | _(unset)_ | Extra comma-separated keys accepted by the gateway (e.g. one per API client). |
+| `GATEWAY_BIND` | `127.0.0.1` | Interface the gateway's port 8000 is published on. Set `0.0.0.0` to reach the REST API from other machines, and set `API_KEY` too. |
+| `ALLOWED_ORIGINS` | local dev origins | CORS origins for browsers calling the gateway directly. The bundled UI is same-origin and doesn't need CORS. Use `*` to allow any origin. |
+| `STUDIO_MAX_FILE_SIZE_MB` | `2048` | Upload limit for the studio UI (`0` = unlimited). |
+| `MAX_FILE_SIZE_MB` | `100` | Upload limit for `/api/v1` analysis endpoints. |
+
+> ⚠️ Port 3000 (the UI) has no login of its own. If you expose it beyond your own machine or LAN, put it behind a reverse proxy with authentication.
+
+Every service has a Docker healthcheck, so `docker compose ps` shows which engines are healthy.
 
 ---
 
@@ -159,7 +181,9 @@ docker compose up -d
 | `{OriginalName}` | Original uploaded filename (without extension) | `My Song` |
 | `{Key}` | Standard musical key | `C# minor` / `F major` |
 | `{Camelot}` | Camelot wheel key | `12A` / `7B` |
-| `{BPM}` | Tempo in beats per minute | `125.0` |
+| `{BPM}` | Tempo in beats per minute (rounded) | `125` |
+| `{Pitch}` | Pitch shift applied (pitch/stretch exports) | `+2st` |
+| `{Tempo}` | Tempo ratio applied (pitch/stretch exports) | `1.25x` |
 
 ---
 
@@ -181,7 +205,7 @@ When the stack is running, explore and execute live API calls via interactive do
 
 ### Authentication (Optional & Cloud-Ready)
 * **Local Development (Default):** If `API_KEY` (or `API_KEYS`) is unset, authentication is disabled and all endpoints are open.
-* **Production / Cloud Deployment:** Set `API_KEY=your_secret_key` or `API_KEYS=key1,key2` in environment variables.
+* **Production / Cloud Deployment:** Set `API_KEY=your_secret_key` or `API_KEYS=key1,key2` in environment variables. Authentication then applies to every gateway route, not only `/api/v1`. Only `/`, `/docs`, `/redoc` and `/openapi.json` stay public.
 * **Supported Headers:**
   * `X-API-Key: your_secret_key`
   * `Authorization: Bearer your_secret_key`
@@ -243,7 +267,11 @@ When the stack is running, explore and execute live API calls via interactive do
 ## Running Automated Tests
 
 ```bash
+# Backend (gateway + worker unit tests)
 pytest backend/tests/
+
+# Frontend (Vitest)
+npm --prefix frontend test
 ```
 
 ---
@@ -253,7 +281,7 @@ pytest backend/tests/
 Audio Analysis Studio is made possible thanks to the extraordinary open-source research and engineering community. Special attribution and gratitude go to the authors and maintainers of the following upstream projects:
 
 - **[BeatNet](https://github.com/mjhydri/BeatNet)** *(Mojtaba Heydari et al.)* – State-of-the-art joint beat and downbeat tracking using Dynamic Bayesian Networks and CRNNs.
-- **[MusicalKeyCNN](https://github.com/danielfriis/musical-key-cnn)** *(Daniel Friis et al.)* – Deep Convolutional Neural Network for accurate musical key and Camelot wheel estimation.
+- **[MusicalKeyCNN](https://github.com/a1ex90/MusicalKeyCNN)** *(Alexander Sommer, based on Korzeniowski & Widmer)* – Deep Convolutional Neural Network for accurate musical key and Camelot wheel estimation.
 - **[Madmom](https://github.com/CPJKU/madmom)** *(Department of Computational Perception, JKU Linz)* – Robust Python audio and music processing library powering CNN + CRF chord recognition.
 - **[Rubber Band Library](https://breakfastquay.com/rubberband/)** *(Breakfast Quay / Chris Cannam)* – Gold-standard real-time and offline pitch shifting and time stretching audio engine.
 - **[FLAC Detective](https://github.com/aegis-technologies/flac-detective)** *(Aegis Technologies)* – Audio authenticity, frequency cutoff analysis, and fake lossless transcode detection.

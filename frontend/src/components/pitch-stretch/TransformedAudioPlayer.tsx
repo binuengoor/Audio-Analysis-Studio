@@ -81,6 +81,7 @@ export const TransformedAudioPlayer: React.FC<TransformedAudioPlayerProps> = ({
         <button
           type="button"
           onClick={onTogglePlayPause}
+          aria-label={isPlaying ? 'Pause transformed audio' : 'Play transformed audio'}
           className="p-2.5 rounded-full bg-purple-600 hover:bg-purple-500 text-white shadow-md shadow-purple-600/30 transition-transform active:scale-95"
         >
           {isPlaying ? (

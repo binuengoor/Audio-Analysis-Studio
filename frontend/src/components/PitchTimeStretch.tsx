@@ -163,7 +163,8 @@ export const PitchTimeStretch: React.FC<PitchTimeStretchProps> = ({
         <button
           type="button"
           onClick={() => setIsExpanded(!isExpanded)}
-          className="flex items-center gap-2.5 text-left group focus:outline-none"
+          aria-expanded={isExpanded}
+          className="flex items-center gap-2.5 text-left group rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/70"
         >
           <div className="p-2 bg-purple-500/15 rounded-lg border border-purple-500/30 text-purple-300 group-hover:border-purple-400 transition-colors">
             <svg
