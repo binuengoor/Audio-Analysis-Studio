@@ -40,7 +40,7 @@ export const TempoStretchCard: React.FC<TempoStretchCardProps> = ({
           onChange={(e) => onTempoRatioChange(parseFloat(e.target.value))}
           className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-purple-500"
         />
-        <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+        <div className="flex justify-between text-[11px] text-slate-400 font-mono">
           <span>0.50x (50% Slower)</span>
           <span>1.00x (Original)</span>
           <span>2.00x (200% Faster)</span>
@@ -79,9 +79,9 @@ export const TempoStretchCard: React.FC<TempoStretchCardProps> = ({
               onChange={(e) => onTargetBpmInputChange(e.target.value)}
               className="w-12 bg-transparent text-amber-300 font-mono font-bold text-xs focus:outline-none text-right"
             />
-            <span className="text-[10px] text-slate-400">BPM</span>
+            <span className="text-[11px] text-slate-400">BPM</span>
           </div>
-          <span className="text-[10px] text-slate-500">
+          <span className="text-[11px] text-slate-400">
             (Orig: {detectedBpm || 120})
           </span>
         </div>

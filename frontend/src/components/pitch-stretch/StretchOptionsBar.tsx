@@ -31,7 +31,7 @@ export const StretchOptionsBar: React.FC<StretchOptionsBarProps> = ({
             className="rounded border-slate-700 text-purple-600 focus:ring-purple-500 bg-slate-900 w-4 h-4"
           />
           <span className="font-semibold text-slate-200">Preserve Vocal Formants</span>
-          <span className="text-[10px] text-slate-500 hidden sm:inline">
+          <span className="text-[11px] text-slate-400 hidden sm:inline">
             (Prevents chipmunk timbre)
           </span>
         </label>
@@ -45,7 +45,7 @@ export const StretchOptionsBar: React.FC<StretchOptionsBarProps> = ({
                 key={f}
                 type="button"
                 onClick={() => onOutputFormatChange(f)}
-                className={`px-2.5 py-0.5 rounded uppercase text-[10px] font-bold transition-colors ${
+                className={`px-2.5 py-0.5 rounded uppercase text-[11px] font-bold transition-colors ${
                   outputFormat === f
                     ? 'bg-purple-600 text-white'
                     : 'text-slate-400 hover:text-white'

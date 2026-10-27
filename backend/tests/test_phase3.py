@@ -153,3 +153,53 @@ def test_watch_folder_ingests_settled_audio_once(lib, tmp_path):
     os.utime(watch / "song.mp3", (old, old))
     assert scan_watch_folder(lib, queued.append, str(watch), str(inp)) == []
     assert not (watch / "song.mp3").exists()
+
+
+def test_meta_endpoint_normalises_validates_and_survives_reanalysis():
+    from routers.studio import get_library
+    lib = get_library()
+    entry = lib.add_entry("test_meta.wav")
+    lib.update_analysis(entry.id, AnalysisResult(filename="test_meta.wav", bpm=120.0, key_camelot="8A", key_standard="A minor"))
+    try:
+        url = f"/api/library/{entry.id}/meta"
+        r = client.patch(url, json={"rating": 4, "notes": "great intro", "tags": ["  Peak Time ", "peak   time", "Warm-up", ""]})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["rating"] == 4 and body["notes"] == "great intro" and body["tags"] == ["peak time", "warm-up"]
+
+        # partial update leaves the rest alone
+        assert client.patch(url, json={"notes": "x"}).json()["tags"] == ["peak time", "warm-up"]
+        # rating 0 clears
+        assert client.patch(url, json={"rating": 0}).json()["rating"] is None
+        assert client.patch(url, json={"rating": 6}).status_code == 422
+        assert client.patch(url, json={"tags": ["t"] * 21}).status_code == 422
+        assert client.patch("/api/library/nope/meta", json={"rating": 1}).status_code == 404
+
+        # re-analysis must not wipe user metadata
+        client.patch(url, json={"rating": 5, "tags": ["keeper"]})
+        lib.update_analysis(entry.id, AnalysisResult(filename="test_meta.wav", bpm=121.0, key_camelot="8A", key_standard="A minor"))
+        kept = lib.get_entry(entry.id)
+        assert kept.rating == 5 and kept.tags == ["keeper"] and kept.analysis.bpm == 121.0
+    finally:
+        lib.delete_entry(entry.id)
+
+
+def test_meta_in_csv_and_rekordbox_comments(lib):
+    e = _analysed(lib, "m.mp3", bpm=120.0, key_camelot="8A", key_standard="A minor", duration=10)
+    lib.update_meta(e.id, rating=3, notes="n", tags=["peak time", "vocal"])
+    e = lib.get_entry(e.id)
+    row = list(csv.DictReader(io.StringIO(to_csv([e]))))[0]
+    assert row["rating"] == "3" and row["tags"] == "peak time,vocal" and row["notes"] == "n"
+    xml = to_rekordbox_xml([e], lambda _: "/d/m.mp3", "/d")
+    track = ET.fromstring(xml).find("COLLECTION/TRACK")
+    assert track.get("Comments") == "#peak_time #vocal" and track.get("Rating") is None
+
+
+def test_legacy_database_gets_meta_columns(tmp_path):
+    import sqlite3
+    conn = sqlite3.connect(tmp_path / "library.db")
+    conn.execute("CREATE TABLE library (id TEXT PRIMARY KEY, filename TEXT NOT NULL, input_path TEXT, output_path TEXT, analysis_json TEXT, created_at REAL NOT NULL, status TEXT NOT NULL);")
+    conn.execute("INSERT INTO library VALUES ('1','old.wav','old.wav',NULL,NULL,1.0,'uploaded');")
+    conn.commit(); conn.close()
+    e = LibraryManager(str(tmp_path)).get_entry("1")
+    assert e.rating is None and e.notes == "" and e.tags == []

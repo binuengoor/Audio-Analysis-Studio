@@ -65,7 +65,7 @@ export const SongStructure: React.FC<SongStructureProps> = ({
         </button>
 
         {isExpanded && (
-          <span className="text-[11px] text-slate-500 hidden sm:inline">
+          <span className="text-[11px] text-slate-400 hidden sm:inline">
             Click any section pill to jump playback
           </span>
         )}
@@ -98,7 +98,7 @@ export const SongStructure: React.FC<SongStructureProps> = ({
                     <span className="w-1.5 h-1.5 rounded-full bg-white/70"></span>
                     {seg.label}
                   </span>
-                  <span className="text-[10px] font-mono text-slate-300/80 font-normal bg-black/30 px-1.5 py-0.5 rounded">
+                  <span className="text-[11px] font-mono text-slate-300/80 font-normal bg-black/30 px-1.5 py-0.5 rounded">
                     {formatTime(seg.start)} - {formatTime(seg.end)} ({durationSec}s)
                   </span>
                 </button>
@@ -106,7 +106,7 @@ export const SongStructure: React.FC<SongStructureProps> = ({
             })}
           </div>
 
-          <p className="text-[11px] text-slate-500 text-right">
+          <p className="text-[11px] text-slate-400 text-right">
             💡 Laplacian Agglomerative Graph Segmentation (Intro, Verse, Chorus, Bridge, Outro)
           </p>
         </div>

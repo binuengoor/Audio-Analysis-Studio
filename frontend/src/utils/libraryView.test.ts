@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { LibraryEntry } from '../types';
-import { EMPTY_FILTERS, filterAndSort } from './libraryView';
+import { EMPTY_FILTERS, collectTags, filterAndSort } from './libraryView';
 
 const entry = (id: string, filename: string, bpm: number | null, camelot: string | null, created = 1, errors = {}): LibraryEntry => ({
   id,
@@ -19,6 +19,8 @@ const entry = (id: string, filename: string, bpm: number | null, camelot: string
     engine_errors: errors,
   },
 });
+
+const withMeta = (e: LibraryEntry, rating: number | null, tags: string[], notes = ''): LibraryEntry => ({ ...e, rating, tags, notes });
 
 const lib = [
   entry('a', 'Alpha.mp3', 124, '8A', 1),
@@ -51,5 +53,23 @@ describe('library view', () => {
   it('finds tracks that mix with the selected one', () => {
     const f = { ...EMPTY_FILTERS, mixesWith: { id: 'a', camelot: '8A', bpm: 124 } };
     expect(filterAndSort(lib, f, 'added', 'asc').map((e) => e.id)).toEqual(['b']);
+  });
+
+  it('filters and searches by tag, rating and notes', () => {
+    const meta = [
+      withMeta(lib[0], 5, ['peak time', 'vocal'], 'huge drop'),
+      withMeta(lib[1], 3, ['warm-up']),
+      withMeta(lib[2], null, []),
+    ];
+    expect(filterAndSort(meta, { ...EMPTY_FILTERS, tag: 'vocal' }, 'added', 'asc').map((e) => e.id)).toEqual(['a']);
+    expect(filterAndSort(meta, { ...EMPTY_FILTERS, minRating: 4 }, 'added', 'asc').map((e) => e.id)).toEqual(['a']);
+    expect(filterAndSort(meta, { ...EMPTY_FILTERS, minRating: 3 }, 'rating', 'desc').map((e) => e.id)).toEqual(['a', 'b']);
+    expect(filterAndSort(meta, { ...EMPTY_FILTERS, query: 'drop' }, 'added', 'asc').map((e) => e.id)).toEqual(['a']);
+    expect(filterAndSort(meta, { ...EMPTY_FILTERS, query: 'warm' }, 'added', 'asc').map((e) => e.id)).toEqual(['b']);
+  });
+
+  it('collects tags by frequency', () => {
+    const meta = [withMeta(lib[0], 1, ['b', 'a']), withMeta(lib[1], 1, ['b']), withMeta(lib[2], 1, ['c'])];
+    expect(collectTags(meta)).toEqual(['b', 'a', 'c']);
   });
 });

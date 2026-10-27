@@ -12,10 +12,11 @@ import { ApiKeyDialog } from './components/ApiKeyDialog';
 import { Tabs, TabDef } from './components/Tabs';
 import { AnalysisEditor } from './components/AnalysisEditor';
 import { ExportCard } from './components/ExportCard';
+import { MetaEditor } from './components/MetaEditor';
 import { useAudioStore } from './store/useAudioStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { AUTH_REQUIRED_EVENT } from './config';
-import { filterAndSort, EMPTY_FILTERS } from './utils/libraryView';
+import { filterAndSort, EMPTY_FILTERS, collectTags } from './utils/libraryView';
 import { harmonicRelation } from './utils/harmonic';
 
 const SHORTCUTS: [string, string][] = [
@@ -44,6 +45,7 @@ function App() {
     reanalyzeTrack,
     processOutput,
     overrideAnalysis,
+    updateMeta,
     selectTrack,
   } = useAudioStore();
 
@@ -246,7 +248,7 @@ function App() {
                               <div className="text-2xl font-bold text-white mt-1">
                                 {a.duration ? `${Math.floor(a.duration / 60)}:${String(Math.floor(a.duration % 60)).padStart(2, '0')}` : '—'}
                               </div>
-                              <div className="text-[11px] text-purple-300 mt-1 truncate">{a.chords?.length ?? 0} chords · {a.segments?.length ?? 0} sections</div>
+                              <div className="text-[11px] text-purple-300 mt-1 truncate">{a.chords?.length ?? 0} {a.chords?.length === 1 ? 'chord' : 'chords'} · {a.segments?.length ?? 0} {a.segments?.length === 1 ? 'section' : 'sections'}</div>
                             </div>
                           </div>
 
@@ -254,12 +256,16 @@ function App() {
                             <AnalysisEditor analysis={a} disabled={isAnalyzing} onSave={(patch) => overrideAnalysis(activeEntry.id, patch)} />
                           )}
 
+                          {activeEntry && (
+                            <MetaEditor entry={activeEntry} knownTags={collectTags(library)} onSave={(patch) => updateMeta(activeEntry.id, patch)} />
+                          )}
+
                           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
                             <h3 className="text-sm font-bold text-white uppercase tracking-wider">Mixes well with</h3>
                             {!a.key_camelot ? (
-                              <p className="text-sm text-slate-500">Set a key above to find harmonic matches in your library.</p>
+                              <p className="text-sm text-slate-400">Set a key above to find harmonic matches in your library.</p>
                             ) : mixes.length === 0 ? (
-                              <p className="text-sm text-slate-500">No other tracks in your library are within ±1 key and ±8% BPM of this one yet.</p>
+                              <p className="text-sm text-slate-400">No other tracks in your library are within ±1 key and ±8% BPM of this one yet.</p>
                             ) : (
                               <ul className="grid sm:grid-cols-2 gap-2">
                                 {mixes.slice(0, 6).map((m) => (
@@ -304,9 +310,9 @@ function App() {
                 )}
               </>
             ) : (
-              <div className="min-h-[300px] flex flex-col items-center justify-center text-slate-500 border-2 border-dashed border-slate-800 rounded-2xl p-12 bg-slate-900/40 text-center">
+              <div className="min-h-[300px] flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-800 rounded-2xl p-12 bg-slate-900/40 text-center">
                 <p className="text-base font-semibold text-slate-300">No track selected</p>
-                <p className="text-sm text-slate-500 mt-1">Drop an audio file or paste a URL on the left, or pick a track from the library below.</p>
+                <p className="text-sm text-slate-400 mt-1">Drop an audio file or paste a URL on the left, or pick a track from the library below.</p>
               </div>
             )}
           </div>
@@ -326,7 +332,7 @@ function App() {
 
         <Library searchInputRef={searchRef} />
 
-        <footer className="pt-6 border-t border-slate-800/80 text-center text-xs text-slate-500 space-y-2">
+        <footer className="pt-6 border-t border-slate-800/80 text-center text-xs text-slate-400 space-y-2">
           <div>Built for music creators, DJs and audio engineers — powered by open-source audio research.</div>
           <div className="flex items-center justify-center gap-3 text-slate-400">
             <a href="https://github.com/binuengoor/Audio-Analysis-Studio" target="_blank" rel="noreferrer" className="hover:text-purple-300 focus:outline-none focus-visible:underline">GitHub</a>

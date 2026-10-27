@@ -19,6 +19,8 @@ from config import (
 )
 from utils import sanitize_filename, resolve_audio_file_path, unique_upload_name
 from models import (
+    LibraryMetaRequest,
+    normalize_tags,
     AnalysisOverrideRequest,
     AnalysisResult,
     AnalyzeRequest,
@@ -502,6 +504,25 @@ def override_analysis(
 
     library.update_analysis(entry.id, analysis, preserve_overrides=False)
     return library.get_entry(entry.id)
+
+
+@router.patch("/api/library/{id}/meta", response_model=LibraryEntry)
+def update_library_meta(
+    id: str,
+    request: LibraryMetaRequest,
+    library: LibraryManager = Depends(get_library),
+):
+    """Sets rating (1-5, 0 clears), free-text notes and tags for a track."""
+    if not library.get_entry(id):
+        raise HTTPException(status_code=404, detail="Library entry not found")
+    library.update_meta(
+        id,
+        rating=request.rating if request.rating else None,
+        clear_rating=request.rating == 0,
+        notes=request.notes,
+        tags=normalize_tags(request.tags) if request.tags is not None else None,
+    )
+    return library.get_entry(id)
 
 
 @router.delete("/api/library/{id}/input")

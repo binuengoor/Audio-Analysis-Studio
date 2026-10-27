@@ -39,7 +39,7 @@ export const PitchTranspositionCard: React.FC<PitchTranspositionCardProps> = ({
           onChange={(e) => onPitchChange(parseInt(e.target.value))}
           className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
         />
-        <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+        <div className="flex justify-between text-[11px] text-slate-400 font-mono">
           <span>-12 st (-1 Octave)</span>
           <span>0 (Original)</span>
           <span>+12 st (+1 Octave)</span>

@@ -45,8 +45,14 @@ class LibraryManager:
                 """)
                 # Added after v1: content hash for duplicate detection (existing databases are migrated in place)
                 columns = {row["name"] for row in conn.execute("PRAGMA table_info(library);")}
-                if "content_hash" not in columns:
-                    conn.execute("ALTER TABLE library ADD COLUMN content_hash TEXT;")
+                for column, ddl in (
+                    ("content_hash", "TEXT"),
+                    ("rating", "INTEGER"),
+                    ("notes", "TEXT NOT NULL DEFAULT ''"),
+                    ("tags_json", "TEXT NOT NULL DEFAULT '[]'"),
+                ):
+                    if column not in columns:
+                        conn.execute(f"ALTER TABLE library ADD COLUMN {column} {ddl};")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_library_hash ON library(content_hash);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_library_filename ON library(filename);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_library_created ON library(created_at DESC);")
@@ -117,7 +123,38 @@ class LibraryManager:
             analysis=analysis_data,
             created_at=row["created_at"],
             status=row["status"],
+            rating=row["rating"],
+            notes=row["notes"] or "",
+            tags=self._load_tags(row["tags_json"]),
         )
+
+    @staticmethod
+    def _load_tags(raw) -> List[str]:
+        try:
+            tags = json.loads(raw or "[]")
+            return [t for t in tags if isinstance(t, str)]
+        except (TypeError, ValueError):
+            return []
+
+    def update_meta(self, id: str, rating=None, notes=None, tags=None, clear_rating: bool = False):
+        """Updates user-owned metadata only; analysis and files are untouched."""
+        sets, params = [], []
+        if clear_rating:
+            sets.append("rating = NULL")
+        elif rating is not None:
+            sets.append("rating = ?")
+            params.append(rating)
+        if notes is not None:
+            sets.append("notes = ?")
+            params.append(notes)
+        if tags is not None:
+            sets.append("tags_json = ?")
+            params.append(json.dumps(tags))
+        if not sets:
+            return
+        with self._get_connection() as conn:
+            conn.execute(f"UPDATE library SET {', '.join(sets)} WHERE id = ?;", (*params, id))
+            conn.commit()
 
     def load(self):
         """Maintained for backward compatibility; queries execute against SQLite dynamically."""

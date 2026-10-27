@@ -90,7 +90,7 @@ export const AnalysisEditor: React.FC<AnalysisEditorProps> = ({ analysis, disabl
           type="button"
           onClick={save}
           disabled={disabled || saving || !(bpmChanged || keyChanged)}
-          className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-purple-600 hover:bg-purple-500 text-white disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-300"
+          className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-purple-600 hover:bg-purple-500 text-white disabled:bg-slate-800 disabled:text-slate-400 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-300"
         >
           {saving ? 'Saving…' : 'Save correction'}
         </button>

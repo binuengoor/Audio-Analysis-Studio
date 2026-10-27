@@ -212,7 +212,7 @@ export const QualityAnalysis: React.FC<QualityAnalysisProps> = ({ quality, defau
             {/* 1. Format & Container Properties */}
             <div className="bg-slate-950 p-4 rounded-xl border border-slate-800/90 flex flex-col justify-between">
               <div>
-                <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">
+                <div className="text-[11px] text-slate-400 uppercase font-bold tracking-wider">
                   Container Format
                 </div>
                 <div className="text-lg font-extrabold text-white mt-1 flex items-baseline gap-2">
@@ -230,7 +230,7 @@ export const QualityAnalysis: React.FC<QualityAnalysisProps> = ({ quality, defau
             {/* 2. Stated vs Estimated Perceptual Bitrate */}
             <div className="bg-slate-950 p-4 rounded-xl border border-slate-800/90 flex flex-col justify-between">
               <div>
-                <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">
+                <div className="text-[11px] text-slate-400 uppercase font-bold tracking-wider">
                   Bitrate (Stated / Estimated)
                 </div>
                 <div className="mt-1.5 flex items-center gap-2">
@@ -261,10 +261,10 @@ export const QualityAnalysis: React.FC<QualityAnalysisProps> = ({ quality, defau
             <div className="bg-slate-950 p-4 rounded-xl border border-slate-800/90 flex flex-col justify-between">
               <div>
                 <div className="flex justify-between items-center">
-                  <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">
+                  <span className="text-[11px] text-slate-400 uppercase font-bold tracking-wider">
                     Integrated Loudness
                   </span>
-                  <span className="text-[10px] text-slate-400 font-medium">Target: -14 LUFS</span>
+                  <span className="text-[11px] text-slate-400 font-medium">Target: -14 LUFS</span>
                 </div>
                 <div className={`text-2xl font-extrabold mt-1 ${lufsEval.color}`}>
                   {mastering.lufs.toFixed(1)} <span className="text-xs text-slate-400 font-normal">LUFS</span>
@@ -274,7 +274,7 @@ export const QualityAnalysis: React.FC<QualityAnalysisProps> = ({ quality, defau
                 <div className={`text-[11px] font-semibold ${lufsEval.color}`}>
                   {lufsEval.badge}
                 </div>
-                <div className="text-[10px] text-slate-400 truncate" title={lufsEval.desc}>
+                <div className="text-[11px] text-slate-400 truncate" title={lufsEval.desc}>
                   {lufsEval.desc}
                 </div>
               </div>
@@ -284,10 +284,10 @@ export const QualityAnalysis: React.FC<QualityAnalysisProps> = ({ quality, defau
             <div className="bg-slate-950 p-4 rounded-xl border border-slate-800/90 flex flex-col justify-between">
               <div>
                 <div className="flex justify-between items-center">
-                  <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">
+                  <span className="text-[11px] text-slate-400 uppercase font-bold tracking-wider">
                     Sample Peak Level
                   </span>
-                  <span className="text-[10px] text-slate-400 font-medium">Ceiling: -1.0 dB</span>
+                  <span className="text-[11px] text-slate-400 font-medium">Ceiling: -1.0 dB</span>
                 </div>
                 <div className={`text-2xl font-extrabold mt-1 ${peakEval.color}`}>
                   {mastering.peak_db.toFixed(1)} <span className="text-xs text-slate-400 font-normal">dBFS</span>
@@ -297,7 +297,7 @@ export const QualityAnalysis: React.FC<QualityAnalysisProps> = ({ quality, defau
                 <div className={`text-[11px] font-semibold ${peakEval.color}`}>
                   {peakEval.badge}
                 </div>
-                <div className="text-[10px] text-slate-400 truncate" title={peakEval.desc}>
+                <div className="text-[11px] text-slate-400 truncate" title={peakEval.desc}>
                   {peakEval.desc}
                 </div>
               </div>

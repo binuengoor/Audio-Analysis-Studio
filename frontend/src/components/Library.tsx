@@ -9,6 +9,7 @@ import {
   SortDir,
   SortKey,
   filterAndSort,
+  collectTags,
   hasEngineErrors,
   qualityRank,
 } from '../utils/libraryView';
@@ -30,13 +31,14 @@ const DownloadIcon = () => (
 );
 
 const focusRing = 'focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400';
-const control = `bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:border-purple-500 ${focusRing}`;
+const control = `bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-400 focus:border-purple-500 ${focusRing}`;
 
 const COLUMNS: { key: SortKey | null; label: string; align?: string }[] = [
   { key: 'name', label: 'Track' },
   { key: 'key', label: 'Key' },
   { key: 'bpm', label: 'BPM' },
   { key: 'quality', label: 'Quality' },
+  { key: 'rating', label: 'Rating' },
   { key: null, label: 'Files', align: 'text-center' },
   { key: 'added', label: 'Added' },
   { key: null, label: '', align: 'text-center' },
@@ -59,6 +61,7 @@ export const Library: React.FC<LibraryProps> = ({ searchInputRef }) => {
     }
   });
   const showToast = useAudioStore((s) => s.showToast);
+  const allTags = useMemo(() => collectTags(library), [library]);
 
   // Duplicates are computed server-side by content hash; refresh whenever the mode is on and the library changes
   useEffect(() => {
@@ -177,11 +180,11 @@ export const Library: React.FC<LibraryProps> = ({ searchInputRef }) => {
                   <p className="text-[11px] text-slate-400">
                     {rows.length === library.length ? 'Whole library' : `${rows.length} filtered tracks`} · analysed tracks only
                   </p>
-                  <button role="menuitem" onClick={() => exportLibrary('csv')} className={`w-full text-left px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-sm ${focusRing}`}>CSV <span className="text-slate-500 text-xs">spreadsheet</span></button>
-                  <button role="menuitem" onClick={() => exportLibrary('json')} className={`w-full text-left px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-sm ${focusRing}`}>JSON <span className="text-slate-500 text-xs">full analysis</span></button>
+                  <button role="menuitem" onClick={() => exportLibrary('csv')} className={`w-full text-left px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-sm ${focusRing}`}>CSV <span className="text-slate-400 text-xs">spreadsheet</span></button>
+                  <button role="menuitem" onClick={() => exportLibrary('json')} className={`w-full text-left px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-sm ${focusRing}`}>JSON <span className="text-slate-400 text-xs">full analysis</span></button>
                   <div className="rounded-lg bg-slate-900 p-2 space-y-1.5">
-                    <button role="menuitem" onClick={() => exportLibrary('rekordbox')} className={`w-full text-left px-1 py-1 rounded text-sm ${focusRing}`}>Rekordbox XML <span className="text-slate-500 text-xs">BPM + key</span></button>
-                    <label htmlFor="rb-prefix" className="block text-[10px] uppercase text-slate-500">Folder of ./data on your DJ computer</label>
+                    <button role="menuitem" onClick={() => exportLibrary('rekordbox')} className={`w-full text-left px-1 py-1 rounded text-sm ${focusRing}`}>Rekordbox XML <span className="text-slate-400 text-xs">BPM + key</span></button>
+                    <label htmlFor="rb-prefix" className="block text-[11px] uppercase text-slate-400">Folder of ./data on your DJ computer</label>
                     <input
                       id="rb-prefix"
                       value={pathPrefix}
@@ -189,7 +192,7 @@ export const Library: React.FC<LibraryProps> = ({ searchInputRef }) => {
                       placeholder="/Users/me/Audio-Analysis-Studio/data"
                       className={`${control} w-full font-mono`}
                     />
-                    <p className="text-[10px] text-slate-500">Without it, track paths point inside the Docker container. Beat grids are not exported.</p>
+                    <p className="text-[11px] text-slate-400">Without it, track paths point inside the Docker container. Beat grids are not exported.</p>
                   </div>
                 </div>
               )}
@@ -215,7 +218,7 @@ export const Library: React.FC<LibraryProps> = ({ searchInputRef }) => {
               id="lib-search"
               ref={searchInputRef}
               type="search"
-              placeholder="Search name or key…  ( / )"
+              placeholder="Search name, key, tag, note…  ( / )"
               value={filters.query}
               onChange={(e) => setFilters({ ...filters, query: e.target.value })}
               className={`${control} w-56`}
@@ -231,6 +234,20 @@ export const Library: React.FC<LibraryProps> = ({ searchInputRef }) => {
             <label className="sr-only" htmlFor="lib-bpm-max">Maximum BPM</label>
             <input id="lib-bpm-max" type="number" placeholder="BPM max" min={0} value={filters.bpmMax ?? ''} onChange={(e) => setFilters({ ...filters, bpmMax: num(e.target.value) })} className={`${control} w-24`} />
 
+            {allTags.length > 0 && (
+              <>
+                <label className="sr-only" htmlFor="lib-tag">Filter by tag</label>
+                <select id="lib-tag" value={filters.tag} onChange={(e) => setFilters({ ...filters, tag: e.target.value })} className={control}>
+                  <option value="">Any tag</option>
+                  {allTags.map((t) => <option key={t} value={t}>#{t}</option>)}
+                </select>
+              </>
+            )}
+            <label className="sr-only" htmlFor="lib-rating">Minimum rating</label>
+            <select id="lib-rating" value={filters.minRating} onChange={(e) => setFilters({ ...filters, minRating: Number(e.target.value) })} className={control}>
+              <option value={0}>Any rating</option>
+              {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{'★'.repeat(n)}{n < 5 ? ' & up' : ''}</option>)}
+            </select>
             <button
               type="button"
               aria-pressed={mixMode}
@@ -327,22 +344,29 @@ export const Library: React.FC<LibraryProps> = ({ searchInputRef }) => {
                     {entry.output_path && (
                       <div className="text-[11px] text-emerald-300/90 max-w-[260px] truncate" title={entry.output_path}>→ {entry.output_path}</div>
                     )}
+                    {(entry.tags?.length ?? 0) > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1 max-w-[260px]">
+                        {entry.tags!.map((t) => (
+                          <span key={t} className="text-[11px] px-1.5 rounded-full bg-sky-500/10 text-sky-300 border border-sky-500/20">#{t}</span>
+                        ))}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     {a ? (
                       <div className="flex items-center gap-1.5">
-                        <span className={`px-2 py-0.5 rounded-md font-bold text-xs border ${a.key_camelot ? 'bg-blue-500/20 text-blue-200 border-blue-500/30' : 'bg-slate-800 text-slate-500 border-slate-700'}`}>
+                        <span className={`px-2 py-0.5 rounded-md font-bold text-xs border ${a.key_camelot ? 'bg-blue-500/20 text-blue-200 border-blue-500/30' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
                           {a.key_camelot ?? '—'}
                         </span>
                         {relation && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30" title="Harmonic match with the selected track">
+                          <span className="text-[11px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30" title="Harmonic match with the selected track">
                             {relation === 'same' ? 'same' : relation === 'relative' ? 'relative' : '±1'}
                           </span>
                         )}
                         <span className="text-xs text-slate-400">{a.key_standard ?? ''}</span>
                         {dupMode && dupInfo.get(entry.id) && (
                           <span
-                            className={`text-[10px] px-1.5 py-0.5 rounded border ${dupInfo.get(entry.id)!.best ? 'bg-emerald-950/50 text-emerald-300 border-emerald-500/30' : 'bg-rose-950/50 text-rose-300 border-rose-500/30'}`}
+                            className={`text-[11px] px-1.5 py-0.5 rounded border ${dupInfo.get(entry.id)!.best ? 'bg-emerald-950/50 text-emerald-300 border-emerald-500/30' : 'bg-rose-950/50 text-rose-300 border-rose-500/30'}`}
                             title={`Duplicate set ${dupInfo.get(entry.id)!.group + 1}`}
                           >
                             {dupInfo.get(entry.id)!.best ? 'keep' : 'dup'} #{dupInfo.get(entry.id)!.group + 1}
@@ -356,13 +380,13 @@ export const Library: React.FC<LibraryProps> = ({ searchInputRef }) => {
                   <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold">
                     {a ? (
                       <>
-                        <span className={a.bpm == null ? 'text-slate-500' : 'text-purple-200'}>{a.bpm ?? '—'}</span>
-                        {a.manual_overrides?.includes('bpm') && <span className="ml-1 text-[10px] text-emerald-300" title="Edited by you">✎</span>}
+                        <span className={a.bpm == null ? 'text-slate-400' : 'text-purple-200'}>{a.bpm ?? '—'}</span>
+                        {a.manual_overrides?.includes('bpm') && <span className="ml-1 text-[11px] text-emerald-300" title="Edited by you">✎</span>}
                       </>
                     ) : null}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
-                    <div className="flex flex-wrap items-center gap-1 text-[10px]">
+                    <div className="flex flex-wrap items-center gap-1 text-[11px]">
                       {q && (
                         <>
                           <span className="text-emerald-400/90 bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-500/20">
@@ -384,6 +408,14 @@ export const Library: React.FC<LibraryProps> = ({ searchInputRef }) => {
                       )}
                     </div>
                   </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm" title={entry.notes || undefined}>
+                    {entry.rating ? (
+                      <span className="text-amber-300" aria-label={`${entry.rating} of 5 stars`}>{'★'.repeat(entry.rating)}<span className="text-slate-700">{'★'.repeat(5 - entry.rating)}</span></span>
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
+                    {entry.notes && <span className="ml-1 text-slate-400" aria-label="Has notes">✎</span>}
+                  </td>
                   <td className="px-4 py-3 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-center gap-1">
                       {entry.input_path && (
@@ -398,7 +430,7 @@ export const Library: React.FC<LibraryProps> = ({ searchInputRef }) => {
                           <button onClick={() => deleteOutput(entry.id)} aria-label={`Delete processed ${entry.output_path}`} title="Delete processed" className={`${iconBtn} bg-rose-500/10 hover:bg-rose-500/25 text-rose-300 border-rose-500/30`}><TrashIcon /></button>
                         </>
                       )}
-                      {!entry.input_path && !entry.output_path && <span className="text-[11px] text-slate-500">none</span>}
+                      {!entry.input_path && !entry.output_path && <span className="text-[11px] text-slate-400">none</span>}
                     </div>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-xs text-slate-400">
@@ -411,7 +443,7 @@ export const Library: React.FC<LibraryProps> = ({ searchInputRef }) => {
                       }}
                       aria-label={`Remove ${entry.filename} from library`}
                       title="Remove from library"
-                      className={`text-slate-500 hover:text-rose-400 p-1 rounded ${focusRing}`}
+                      className={`text-slate-400 hover:text-rose-400 p-1 rounded ${focusRing}`}
                     >
                       ✕
                     </button>
@@ -422,7 +454,7 @@ export const Library: React.FC<LibraryProps> = ({ searchInputRef }) => {
 
             {rows.length === 0 && (
               <tr>
-                <td colSpan={COLUMNS.length} className="px-6 py-12 text-center text-slate-500">
+                <td colSpan={COLUMNS.length} className="px-6 py-12 text-center text-slate-400">
                   {library.length === 0 ? (
                     <p className="text-sm">No tracks yet. Drop an audio file or paste a URL above to analyze it.</p>
                   ) : (

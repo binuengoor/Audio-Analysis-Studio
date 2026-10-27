@@ -189,7 +189,7 @@ export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerPro
             px-6 py-2 rounded-full font-bold transition-all flex items-center gap-2 text-sm shadow-lg
             ${isReady 
               ? 'bg-gradient-to-r from-purple-600 to-sky-500 text-white hover:from-purple-500 hover:to-sky-400 shadow-purple-500/20' 
-              : 'bg-slate-800 text-slate-500 cursor-not-allowed'}
+              : 'bg-slate-800 text-slate-400 cursor-not-allowed'}
           `}
         >
           {isPlaying ? (
@@ -214,7 +214,7 @@ export const WaveformPlayer = forwardRef<WaveformPlayerHandle, WaveformPlayerPro
             Active: {startTime.toFixed(1)}s - {endTime.toFixed(1)}s
           </div>
         ) : (
-          <div className="text-xs text-slate-500">Preview Mode</div>
+          <div className="text-xs text-slate-400">Preview Mode</div>
         )}
       </div>
     </div>

@@ -184,7 +184,7 @@ export const UploadZone: React.FC = () => {
                 if (urlError) setUrlError(null);
               }}
               placeholder="Paste YouTube, SoundCloud, or audio URL..."
-              className="w-full bg-slate-950/90 border border-slate-800 rounded-xl pl-9 pr-16 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-colors"
+              className="w-full bg-slate-950/90 border border-slate-800 rounded-xl pl-9 pr-16 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-colors"
               disabled={urlLoading || processing}
             />
             <button

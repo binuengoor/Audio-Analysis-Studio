@@ -159,6 +159,7 @@ docker compose up -d
 * **Tabs** split a track into Overview, Harmony (chords), Structure, Quality and Pitch & tempo; the waveform player stays pinned while you read.
 * **Correct detection:** fix a wrong tempo with `÷2` / `×2` or type a value, and pick the right Camelot key. Corrections are marked ✎ and survive re-analysis.
 * **Library:** search, filter by key or BPM range, sort any column, and use **Mixes with selected** to list tracks within ±1 key (or the relative major/minor) and ±8% BPM of the selected track.
+* **Rating, tags & notes:** star-rate tracks, add tags (`peak time`, `vocal`…) and free-text notes in Overview. They are stored separately from the analysis, so re-analysis never touches them; the library can be searched and filtered by them, and they are included in CSV/JSON exports (tags also become Rekordbox `Comments`, e.g. `#peak_time`).
 * **Keyboard:** `Space` play/pause · `←/→` seek 5 s (`Shift` 15 s) · `1`–`5` tabs · `J`/`K` next/previous track · `/` search · `?` help.
 
 ---
@@ -265,6 +266,7 @@ Copy [`.env.example`](.env.example) to `.env`; `docker compose` picks it up auto
 | `POST` | `/api/process` | Copy input → output with tokenized rename and embed ID3 tags |
 | `GET` | `/api/library` | Retrieve all library entries and analysis metadata |
 | `PATCH` | `/api/library/{id}/analysis` | Manually correct BPM and/or Camelot key (kept across re-analysis) |
+| `PATCH` | `/api/library/{id}/meta` | Set rating (1–5, `0` clears), notes and tags |
 | `GET` | `/api/library/duplicates` | Groups of byte-identical library files |
 | `GET` | `/api/export/library?format=csv\|json\|rekordbox` | Export analysed tracks (optional `ids=`, Rekordbox `path_prefix=`) |
 | `GET` | `/api/download/input/{filename}` | Download original uploaded audio file |

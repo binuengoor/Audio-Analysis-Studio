@@ -21,7 +21,7 @@ Status of the improvement plan from the project audit. Checked items are done.
 - [x] Keyboard shortcuts (`?` for help), tablist/dialog ARIA, focus rings, skip link
 - [ ] Per-engine progress chips (needs a streaming/job-status API from the gateway)
 - [ ] Light theme and a full Settings page (default pattern, formats)
-- [ ] Contrast audit of the 10-11 px helper text
+- [x] Contrast pass: text-slate-500 (3.75-4.24:1) raised to slate-400 (7:1+), helper text >= 11 px; axe-core reports 0 WCAG A/AA violations on Overview/Harmony/Structure/Quality
 
 ## Phase 3 - Features
 - [x] Batch drops (existing) + watch folder (`WATCH_FOLDER=true`, `./data/watch`)
@@ -31,4 +31,5 @@ Status of the improvement plan from the project audit. Checked items are done.
 - [ ] Traktor NML export (needs verification against a real Traktor install)
 - [ ] Beat grid export + Beat This! evaluation (needs downbeat offsets from a new beat worker)
 - [ ] Stem separation (Demucs) worker (large model image; needs GPU/CPU sizing)
-- [ ] Tags, notes, ratings and smart playlists
+- [x] Tags, notes and ratings (searchable, filterable, exported)
+- [ ] Saved filters / smart playlists

@@ -85,7 +85,7 @@ export const ServiceHealthBadge: React.FC = () => {
         <span className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-3.5 py-1.5 rounded-full font-medium flex items-center gap-2 whitespace-nowrap shadow-sm hover:border-emerald-400 transition-all cursor-pointer select-none">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
           <span>Microservices Live</span>
-          <span className="text-[10px] bg-emerald-950/80 px-1.5 py-0.2 rounded text-emerald-300 font-mono font-bold">
+          <span className="text-[11px] bg-emerald-950/80 px-1.5 py-0.2 rounded text-emerald-300 font-mono font-bold">
             {healthyCount}/{totalCount}
           </span>
           <svg className={`w-3.5 h-3.5 text-emerald-400/80 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -100,7 +100,7 @@ export const ServiceHealthBadge: React.FC = () => {
         <span className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 px-3.5 py-1.5 rounded-full font-medium flex items-center gap-2 whitespace-nowrap shadow-sm hover:border-amber-400 transition-all cursor-pointer select-none">
           <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
           <span>Partial Outage</span>
-          <span className="text-[10px] bg-amber-950/80 px-1.5 py-0.2 rounded text-amber-300 font-mono font-bold">
+          <span className="text-[11px] bg-amber-950/80 px-1.5 py-0.2 rounded text-amber-300 font-mono font-bold">
             {healthyCount}/{totalCount}
           </span>
           <svg className={`w-3.5 h-3.5 text-amber-400/80 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -139,7 +139,7 @@ export const ServiceHealthBadge: React.FC = () => {
                 <span className="w-2 h-2 rounded-full bg-purple-400"></span>
                 Microservices Topology
               </h4>
-              <p className="text-[10px] text-slate-400 mt-0.5">
+              <p className="text-[11px] text-slate-400 mt-0.5">
                 Auto-polled every 30s • {healthyCount} of {totalCount} workers online
               </p>
             </div>
@@ -177,22 +177,22 @@ export const ServiceHealthBadge: React.FC = () => {
                       <div className="font-semibold text-white truncate text-[11px]">
                         {s.name}
                       </div>
-                      <div className="text-[10px] text-slate-400 truncate">
+                      <div className="text-[11px] text-slate-400 truncate">
                         {s.engine}
                       </div>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2 flex-shrink-0 text-right">
-                    <span className="text-[10px] text-slate-400 font-mono bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">
+                    <span className="text-[11px] text-slate-400 font-mono bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">
                       :{s.port}
                     </span>
                     {s.status === 'ok' ? (
-                      <span className="text-[10px] text-emerald-400 font-mono font-bold">
+                      <span className="text-[11px] text-emerald-400 font-mono font-bold">
                         {s.latency_ms}ms
                       </span>
                     ) : (
-                      <span className="text-[10px] text-rose-400 font-bold">
+                      <span className="text-[11px] text-rose-400 font-bold">
                         ERR
                       </span>
                     )}
@@ -200,7 +200,7 @@ export const ServiceHealthBadge: React.FC = () => {
                 </div>
               ))
             ) : (
-              <div className="text-center py-4 text-xs text-slate-500">
+              <div className="text-center py-4 text-xs text-slate-400">
                 Checking microservices health...
               </div>
             )}
@@ -208,7 +208,7 @@ export const ServiceHealthBadge: React.FC = () => {
 
           {/* Footer with Timestamp */}
           {lastChecked && (
-            <div className="text-[10px] text-slate-500 text-center border-t border-slate-900 pt-2 font-mono">
+            <div className="text-[11px] text-slate-400 text-center border-t border-slate-900 pt-2 font-mono">
               Last check: {lastChecked.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
             </div>
           )}

@@ -42,6 +42,7 @@ interface AppState {
   pollBatchStatus: () => Promise<void>;
   processOutput: (filename: string, pattern: string, bpm: number | null, key: string | null, camelot: string | null) => Promise<void>;
   overrideAnalysis: (id: string, patch: { bpm?: number; key_camelot?: string; key_standard?: string }) => Promise<boolean>;
+  updateMeta: (id: string, patch: { rating?: number; notes?: string; tags?: string[] }) => Promise<boolean>;
   deleteInput: (id: string) => Promise<void>;
   deleteOutput: (id: string) => Promise<void>;
   deleteEntry: (id: string) => Promise<void>;
@@ -465,6 +466,28 @@ export const useAudioStore = create<AppState>((set, get) => ({
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       get().showToast(`Could not save correction: ${msg}`, 'error');
+      return false;
+    }
+  },
+
+  updateMeta: async (id, patch) => {
+    try {
+      const res = await apiFetch(`/api/library/${id}/meta`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(typeof err.detail === 'string' ? err.detail : 'Update rejected');
+      }
+      const entry: LibraryEntry = await res.json();
+      // update in place so the table does not flicker or lose the selection
+      set((state) => ({ library: state.library.map((e) => (e.id === id ? entry : e)) }));
+      return true;
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      get().showToast(`Could not save: ${msg}`, 'error');
       return false;
     }
   },

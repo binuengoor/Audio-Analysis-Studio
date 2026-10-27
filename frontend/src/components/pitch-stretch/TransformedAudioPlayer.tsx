@@ -43,7 +43,7 @@ export const TransformedAudioPlayer: React.FC<TransformedAudioPlayerProps> = ({
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
         <div>
-          <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+          <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
             Transformed Audio Ready
           </span>
@@ -124,7 +124,7 @@ export const TransformedAudioPlayer: React.FC<TransformedAudioPlayerProps> = ({
             onChange={(e) => onSeek(parseFloat(e.target.value))}
             className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-purple-400"
           />
-          <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+          <div className="flex justify-between text-[11px] text-slate-400 font-mono">
             <span>{formatSecs(currentTime)}</span>
             <span>{formatSecs(duration || 0)}</span>
           </div>

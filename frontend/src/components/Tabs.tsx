@@ -60,7 +60,7 @@ export const Tabs: React.FC<TabsProps> = ({ tabs, active, onChange, label }) => 
             }`}
           >
             {tab.label}
-            {tab.hint && <span className="ml-1.5 text-[10px] font-mono text-slate-500">{tab.hint}</span>}
+            {tab.hint && <span className="ml-1.5 text-[11px] font-mono text-slate-400">{tab.hint}</span>}
             {selected && <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-gradient-to-r from-purple-500 to-sky-400" />}
           </button>
         );

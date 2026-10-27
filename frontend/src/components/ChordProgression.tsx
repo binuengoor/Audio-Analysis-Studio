@@ -20,7 +20,7 @@ export const ChordProgression: React.FC<ChordProgressionProps> = ({
 
   if (!chords || chords.length === 0) {
     return (
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 text-center text-slate-500 text-sm">
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 text-center text-slate-400 text-sm">
         No chord progression detected yet.
       </div>
     );
@@ -152,15 +152,15 @@ export const ChordProgression: React.FC<ChordProgressionProps> = ({
                       )}`}
                     >
                       <span className="text-base font-bold">{cleanChord}</span>
-                      <div className="flex flex-col items-center text-[10px] opacity-75 mt-1 font-mono">
+                      <div className={`flex flex-col items-center text-[11px] mt-1 font-mono ${isCurrent ? "" : "opacity-80"}`}>
                         <span>{c.start.toFixed(1)}s</span>
-                        <span className="text-[9px] opacity-60">+{duration}s</span>
+                        <span className="text-[11px]">+{duration}s</span>
                       </div>
                     </button>
                   );
                 })}
               </div>
-              <p className="text-[11px] text-slate-500 text-right">
+              <p className="text-[11px] text-slate-400 text-right">
                 💡 Click any chord to seek audio preview to that section
               </p>
             </div>

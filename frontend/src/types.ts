@@ -70,6 +70,9 @@ export interface LibraryEntry {
   analysis: AnalysisResult | null;
   created_at: number;
   status: string;
+  rating?: number | null;
+  notes?: string;
+  tags?: string[];
 }
 
 export interface ToastMessage {

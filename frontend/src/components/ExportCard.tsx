@@ -84,7 +84,7 @@ export const ExportCard: React.FC<ExportCardProps> = ({ filename, bpm, keyStanda
           </div>
 
           <div className="rounded-xl bg-slate-950 border border-slate-800 p-3">
-            <div className="text-[10px] uppercase font-semibold text-slate-500 mb-1">Will be saved as</div>
+            <div className="text-[11px] uppercase font-semibold text-slate-400 mb-1">Will be saved as</div>
             <div className="text-sm text-emerald-300 font-mono break-all" aria-live="polite">{preview || '—'}</div>
             {missing && (
               <p className="text-[11px] text-amber-300/90 mt-1.5">BPM or key is unknown, so those tokens will be empty. Correct them in Overview first.</p>

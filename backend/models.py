@@ -57,6 +57,23 @@ class AnalysisOverrideRequest(BaseModel):
     key_standard: Optional[str] = Field(default=None, max_length=32)
 
 
+class LibraryMetaRequest(BaseModel):
+    """User metadata. Omitted fields are unchanged; `rating: 0` clears the rating."""
+    rating: Optional[int] = Field(default=None, ge=0, le=5)
+    notes: Optional[str] = Field(default=None, max_length=2000)
+    tags: Optional[List[str]] = Field(default=None, max_length=20)
+
+
+def normalize_tags(tags: List[str]) -> List[str]:
+    """Lower-cased, trimmed, de-duplicated (order kept), max 32 chars each."""
+    seen: List[str] = []
+    for raw in tags:
+        tag = " ".join(raw.strip().lower().split())[:32]
+        if tag and tag not in seen:
+            seen.append(tag)
+    return seen
+
+
 class AnalyzeRequest(BaseModel):
     filename: Optional[str] = None
     file_path: Optional[str] = None
@@ -99,6 +116,10 @@ class LibraryEntry(BaseModel):
     analysis: Optional[AnalysisResult] = None
     created_at: float
     status: str  # uploaded, pending, processing, completed, error
+    # User-owned metadata (never touched by re-analysis)
+    rating: Optional[int] = None  # 1-5, None = unrated
+    notes: str = ""
+    tags: List[str] = []
 
 
 # --- Public API (v1) Response Models ---

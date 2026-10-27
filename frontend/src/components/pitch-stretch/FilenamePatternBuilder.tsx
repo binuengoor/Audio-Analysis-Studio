@@ -65,35 +65,35 @@ export const FilenamePatternBuilder: React.FC<FilenamePatternBuilderProps> = ({
               <ul className="space-y-1.5 text-slate-300 text-[11px]">
                 <li>
                   <code className="text-emerald-300 font-mono font-semibold">{`{OriginalName}`}</code>
-                  <p className="text-slate-400 text-[10px]">Original track name</p>
+                  <p className="text-slate-400 text-[11px]">Original track name</p>
                 </li>
                 <li>
                   <code className="text-blue-300 font-mono font-semibold">{`{Key}`}</code>
-                  <p className="text-slate-400 text-[10px]">
+                  <p className="text-slate-400 text-[11px]">
                     Shifted Key (e.g. {effKey})
                   </p>
                 </li>
                 <li>
                   <code className="text-purple-300 font-mono font-semibold">{`{Camelot}`}</code>
-                  <p className="text-slate-400 text-[10px]">
+                  <p className="text-slate-400 text-[11px]">
                     Shifted Camelot (e.g. {effCamelot})
                   </p>
                 </li>
                 <li>
                   <code className="text-amber-300 font-mono font-semibold">{`{BPM}`}</code>
-                  <p className="text-slate-400 text-[10px]">
+                  <p className="text-slate-400 text-[11px]">
                     Shifted Tempo (e.g. {Math.round(effBpm)})
                   </p>
                 </li>
                 <li>
                   <code className="text-pink-300 font-mono font-semibold">{`{Pitch}`}</code>
-                  <p className="text-slate-400 text-[10px]">
+                  <p className="text-slate-400 text-[11px]">
                     Pitch shift tag (e.g. {pitchTag})
                   </p>
                 </li>
                 <li>
                   <code className="text-sky-300 font-mono font-semibold">{`{Tempo}`}</code>
-                  <p className="text-slate-400 text-[10px]">
+                  <p className="text-slate-400 text-[11px]">
                     Speed ratio tag (e.g. {tempoTag})
                   </p>
                 </li>
@@ -109,16 +109,16 @@ export const FilenamePatternBuilder: React.FC<FilenamePatternBuilderProps> = ({
           type="text"
           value={renamePattern}
           onChange={(e) => onPatternChange(e.target.value)}
-          className="w-full border border-slate-700 rounded-xl px-3.5 py-1.5 text-xs bg-slate-900 text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 transition-colors font-mono"
+          className="w-full border border-slate-700 rounded-xl px-3.5 py-1.5 text-xs bg-slate-900 text-white placeholder-slate-400 focus:outline-none focus:border-purple-500 transition-colors font-mono"
           placeholder="{OriginalName} - {Key} - {BPM}"
         />
 
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] text-slate-500 font-semibold mr-1">Presets:</span>
+          <span className="text-[11px] text-slate-400 font-semibold mr-1">Presets:</span>
           <button
             type="button"
             onClick={() => onPatternChange('{OriginalName} - {Key} - {BPM}')}
-            className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
+            className={`px-2 py-0.5 rounded text-[11px] border transition-colors ${
               renamePattern === '{OriginalName} - {Key} - {BPM}'
                 ? 'bg-purple-600/30 text-purple-200 border-purple-500/50 font-bold'
                 : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
@@ -129,7 +129,7 @@ export const FilenamePatternBuilder: React.FC<FilenamePatternBuilderProps> = ({
           <button
             type="button"
             onClick={() => onPatternChange('{OriginalName} - {Pitch} - {Tempo}')}
-            className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
+            className={`px-2 py-0.5 rounded text-[11px] border transition-colors ${
               renamePattern === '{OriginalName} - {Pitch} - {Tempo}'
                 ? 'bg-purple-600/30 text-purple-200 border-purple-500/50 font-bold'
                 : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
@@ -140,7 +140,7 @@ export const FilenamePatternBuilder: React.FC<FilenamePatternBuilderProps> = ({
           <button
             type="button"
             onClick={() => onPatternChange('{Camelot} - {BPM} - {OriginalName}')}
-            className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
+            className={`px-2 py-0.5 rounded text-[11px] border transition-colors ${
               renamePattern === '{Camelot} - {BPM} - {OriginalName}'
                 ? 'bg-purple-600/30 text-purple-200 border-purple-500/50 font-bold'
                 : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
@@ -152,7 +152,7 @@ export const FilenamePatternBuilder: React.FC<FilenamePatternBuilderProps> = ({
 
         {/* Resulting Filename Live Preview */}
         <div className="text-[11px] text-slate-400 pt-1 flex items-center gap-1.5 truncate">
-          <span className="text-slate-500 font-semibold">Preview:</span>
+          <span className="text-slate-400 font-semibold">Preview:</span>
           <span className="font-mono text-emerald-300 font-bold truncate">
             {computedFilename}
           </span>

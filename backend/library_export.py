@@ -12,7 +12,7 @@ from models import LibraryEntry
 
 CSV_COLUMNS = [
     "filename", "output_filename", "bpm", "key_camelot", "key_standard", "duration_seconds",
-    "codec", "bit_depth", "sample_rate_hz", "lufs", "peak_db", "verdict", "manual_edits", "engine_errors",
+    "codec", "bit_depth", "sample_rate_hz", "lufs", "peak_db", "verdict", "manual_edits", "engine_errors", "rating", "tags", "notes",
 ]
 
 _KEY_RE = re.compile(r"^([A-G][#b]?)\s+(major|minor)$", re.IGNORECASE)
@@ -44,6 +44,9 @@ def entry_to_row(entry: LibraryEntry) -> dict:
         "verdict": q.authenticity.verdict if q else "",
         "manual_edits": ",".join(a.manual_overrides) if a else "",
         "engine_errors": ",".join(sorted(a.engine_errors)) if a else "",
+        "rating": entry.rating or "",
+        "tags": ",".join(entry.tags),
+        "notes": entry.notes,
     }
 
 
@@ -111,6 +114,8 @@ def to_rekordbox_xml(
             key = short_key(a.key_standard)
             if key:
                 attrs["Tonality"] = key
+        if entry.tags:
+            attrs["Comments"] = " ".join(f"#{t.replace(' ', '_')}" for t in entry.tags)[:250]
         ET.SubElement(collection, "TRACK", attrs)
 
     playlists = ET.SubElement(root, "PLAYLISTS")
