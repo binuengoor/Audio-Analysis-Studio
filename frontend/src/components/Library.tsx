@@ -373,6 +373,8 @@ export const Library: React.FC<LibraryProps> = ({ searchInputRef }) => {
                           </span>
                         )}
                       </div>
+                    ) : entry.status === 'error' ? (
+                      <span className="text-xs text-rose-400">Analysis failed</span>
                     ) : (
                       <span className="text-xs text-amber-400/80 animate-pulse">Analyzing…</span>
                     )}

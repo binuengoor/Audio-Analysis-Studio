@@ -202,6 +202,23 @@ function App() {
                   </div>
                 )}
 
+                {!isAnalyzing && activeEntry?.status === 'error' && (
+                  <div role="alert" className="flex items-start gap-3 p-4 rounded-xl border border-rose-500/40 bg-rose-950/30 text-rose-200 text-sm">
+                    <span aria-hidden>⚠</span>
+                    <div className="flex-1">
+                      <p className="font-semibold">Analysis failed for this track.</p>
+                      <p className="text-xs text-rose-300/80 mt-0.5">Check service status and retry analysis.</p>
+                    </div>
+                    <button
+                      onClick={() => reanalyzeTrack(activeTitle)}
+                      disabled={isAnalyzing}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+
                 {failedEngines.length > 0 && (
                   <div role="alert" className="flex items-start gap-3 p-4 rounded-xl border border-amber-500/40 bg-amber-950/30 text-amber-200 text-sm">
                     <span aria-hidden>⚠</span>

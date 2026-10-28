@@ -46,6 +46,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // Never answer API, file-download or docs navigations with the cached app shell
         navigateFallbackDenylist: [/^\/api\//, /^\/files\//, /^\/docs/, /^\/redoc/, /^\/openapi\.json/],
         runtimeCaching: [
           {

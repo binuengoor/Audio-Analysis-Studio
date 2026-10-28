@@ -43,12 +43,12 @@ class AnalysisResult(BaseModel):
     key_camelot: Optional[str] = None
     key_confidence: Optional[float] = None
     duration: float = 0.0
-    engine_errors: Dict[str, str] = {}
     # Groups ("bpm", "key") the user corrected by hand; re-analysis keeps these values
     manual_overrides: List[str] = []
     chords: List[ChordSegment] = []
     quality: Optional[QualityResult] = None
     segments: List[SectionSegment] = []
+    engine_errors: Dict[str, str] = {}
 
 class AnalysisOverrideRequest(BaseModel):
     """Manual correction of detected tempo/key. Omitted fields are left unchanged."""
@@ -180,11 +180,12 @@ class FullAnalysisResponse(BaseModel):
     key_standard: Optional[str] = None
     key_camelot: Optional[str] = None
     key_confidence: Optional[float] = None
-    engine_errors: Dict[str, str] = {}
+
     duration_seconds: float
     chords: List[ChordSegment] = []
     quality: Optional[QualityData] = None
     segments: List[SectionSegment] = []
+    engine_errors: Dict[str, str] = {}
 
 
 # --- URL Intake Models ---
@@ -224,8 +225,7 @@ class DownloaderUpdateResponse(BaseModel):
 # --- Rubber Band Pitch Shift & Time Stretch Models ---
 
 class StretchRequest(BaseModel):
-    filename: Optional[str] = None
-    file_path: Optional[str] = None
+    filename: str
     pitch_semitones: float = 0.0
     tempo_ratio: float = 1.0
     target_bpm: Optional[float] = None

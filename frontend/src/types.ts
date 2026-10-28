@@ -46,12 +46,12 @@ export interface AnalysisResult {
   key_camelot: string | null;
   key_confidence: number | null;
   duration: number;
-  engine_errors?: Record<string, string>;
   /** "bpm" / "key" groups the user corrected manually */
   manual_overrides?: string[];
   chords?: ChordSegment[];
   quality?: QualityResult;
   segments?: SectionSegment[];
+  engine_errors?: Record<string, string>;
 }
 
 export interface AudioFile {

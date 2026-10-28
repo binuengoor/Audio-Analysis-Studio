@@ -1,6 +1,5 @@
 import os
 import uuid
-import shutil
 import urllib.parse
 from typing import Optional
 import httpx
@@ -9,7 +8,7 @@ from fastapi.responses import FileResponse
 
 from auth import verify_api_key
 from processor import BatchProcessor
-from utils import sanitize_filename
+from utils import sanitize_filename, save_upload_stream, UploadTooLargeError
 from config import (
     SHARED_DATA_DIR,
     INPUT_DIR,
@@ -62,26 +61,11 @@ async def _save_temp_upload(file: UploadFile) -> tuple[str, str]:
     temp_path = os.path.join(INPUT_DIR, temp_filename)
 
     try:
-        with open(temp_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        
-        file_size = os.path.getsize(temp_path)
-        if file_size > MAX_FILE_SIZE_MB * 1024 * 1024:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=f"File exceeds maximum allowed size of {MAX_FILE_SIZE_MB}MB."
-            )
+        save_upload_stream(file.file, temp_path, MAX_FILE_SIZE_MB)
         return temp_path, orig_name
-    except HTTPException:
-        raise
+    except UploadTooLargeError as e:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=str(e))
     except Exception as e:
-        if os.path.exists(temp_path):
-            try:
-                os.remove(temp_path)
-            except Exception:
-                pass
         logger.error("Failed to process temp upload %s: %s", raw_name, e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to process upload: {str(e)}")
 

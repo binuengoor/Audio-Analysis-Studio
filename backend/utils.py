@@ -1,5 +1,6 @@
 import os
 import re
+import hashlib
 import unicodedata
 from typing import Optional
 
@@ -97,8 +98,6 @@ def unique_upload_name(directory: str, filename: str, content_sha256: str) -> st
     Returns `filename` if it is free or already holds identical content; otherwise
     appends a short content hash so different uploads sharing a name never overwrite each other.
     """
-    import hashlib
-
     candidate = os.path.join(directory, filename)
     if not os.path.exists(candidate):
         return filename
@@ -110,3 +109,64 @@ def unique_upload_name(directory: str, filename: str, content_sha256: str) -> st
         return filename
     base, ext = os.path.splitext(filename)
     return f"{base}_{content_sha256[:8]}{ext}"
+
+
+class UploadTooLargeError(Exception):
+    """Raised when an uploaded file exceeds the configured size limit."""
+
+    def __init__(self, limit_mb: int):
+        self.limit_mb = limit_mb
+        super().__init__(f"File exceeds maximum allowed size of {limit_mb}MB.")
+
+
+def save_upload_stream(src, dest_path: str, max_size_mb: Optional[int] = None, chunk_size: int = 1024 * 1024) -> str:
+    """
+    Streams a file-like object to dest_path in chunks, aborting as soon as max_size_mb is
+    exceeded (None disables the limit) so oversized uploads never fill the disk.
+    Returns the SHA-256 hex digest of the written content.
+    """
+    max_bytes = max_size_mb * 1024 * 1024 if max_size_mb is not None else None
+    digest = hashlib.sha256()
+    written = 0
+    try:
+        with open(dest_path, "wb") as out:
+            while True:
+                chunk = src.read(chunk_size)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if max_bytes is not None and written > max_bytes:
+                    raise UploadTooLargeError(max_size_mb)
+                digest.update(chunk)
+                out.write(chunk)
+    except BaseException:
+        if os.path.exists(dest_path):
+            os.remove(dest_path)
+        raise
+    return digest.hexdigest()
+
+
+def file_sha256(path: str, chunk_size: int = 1024 * 1024) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(chunk_size), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def unique_filename(directory: str, filename: str) -> str:
+    """Returns filename, or 'name (n).ext' if a file with that name already exists in directory."""
+    base, ext = os.path.splitext(filename)
+    candidate = filename
+    n = 1
+    while os.path.exists(os.path.join(directory, candidate)):
+        candidate = f"{base} ({n}){ext}"
+        n += 1
+    return candidate
+
+
+def is_within_directory(path: str, directory: str) -> bool:
+    """True if path resolves (following symlinks) to a location inside directory."""
+    real_dir = os.path.realpath(directory)
+    real_path = os.path.realpath(path)
+    return os.path.commonpath([real_dir, real_path]) == real_dir

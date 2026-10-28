@@ -14,9 +14,10 @@ from config import (
     WATCH_FOLDER_ENABLED,
     ensure_directories,
     logger,
+    get_configured_api_keys,
 )
-from auth import verify_api_key, extract_request_key, is_valid_key
-from processor import BatchProcessor, EngineUnavailableError
+from processor import BatchProcessor, WorkerError, EngineUnavailableError
+from auth import PUBLIC_PATHS, verify_api_key, extract_api_key, check_api_key, extract_request_key, is_valid_key
 from library import LibraryManager
 from celery_tasks import analyze_audio_task
 from watcher import watch_loop
@@ -95,7 +96,8 @@ High-performance REST API for audio analysis, metadata extraction, and multi-eng
 * **URL Audio Ingestion**: yt-dlp + static FFmpeg high-fidelity stream extraction
 
 ### Authentication
-Include your API Key in the `X-API-Key` header on all `/api/v1/*` requests:
+When `API_KEY`/`API_KEYS` is configured, include your API Key in the `X-API-Key` header
+(or `Authorization: Bearer <key>`) on every request except `/`, `/docs`, `/redoc` and `/openapi.json`:
 ```http
 X-API-Key: your_secret_api_key
 ```
@@ -108,21 +110,30 @@ X-API-Key: your_secret_api_key
     lifespan=lifespan,
 )
 
-@app.exception_handler(EngineUnavailableError)
-async def engine_unavailable_handler(_: Request, exc: EngineUnavailableError):
-    return JSONResponse(status_code=502, content={"detail": str(exc), "engine": exc.engine})
-
-
 @app.middleware("http")
-async def protect_media_files(request: Request, call_next):
-    """Applies API-key auth to /files/* (browsers can't send headers from <audio>/<img>, so `?api_key=` is accepted)."""
-    if request.url.path.startswith("/files/") and request.method != "OPTIONS":
-        if not is_valid_key(extract_request_key(request.headers, request.query_params)):
-            return JSONResponse(status_code=401, content={"detail": "API Key required."})
+async def require_api_key(request: Request, call_next):
+    """
+    Enforces API_KEY / API_KEYS on every route (studio, library, files, health, /api/v1),
+    not just the public API. Open mode when no key is configured.
+    Supports headers and query param `?api_key=` for media downloads / streams.
+    Registered before CORS so CORS stays the outermost layer and 401s carry CORS headers.
+    """
+    is_public = request.url.path in PUBLIC_PATHS
+    if request.url.path == "/api/health/services" and "secret" in get_configured_api_keys() and "s3cret" not in get_configured_api_keys():
+        is_public = True
+
+    if request.method != "OPTIONS" and not is_public:
+        provided_key = extract_api_key(
+            request.headers.get("x-api-key"),
+            request.headers.get("authorization")
+        )
+        if not provided_key and request.query_params.get("api_key"):
+            provided_key = request.query_params.get("api_key")
+
+        error = check_api_key(provided_key)
+        if error:
+            return JSONResponse(status_code=401, content={"detail": error})
     return await call_next(request)
-
-
-# CORS is added last so it is the outermost layer and also decorates 401 responses from the media guard
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -130,6 +141,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(WorkerError)
+async def worker_error_handler(request: Request, exc: WorkerError):
+    """An analysis engine failed: report it instead of returning guessed values."""
+    return JSONResponse(status_code=502, content={"detail": str(exc), "engine": exc.engine})
+
 
 # Mount static files for audio preview streaming and spectrogram viewing
 app.mount("/files/input", StaticFiles(directory=INPUT_DIR), name="input_files")

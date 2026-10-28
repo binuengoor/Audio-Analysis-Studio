@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { useAudioStore, stopAllPolling } from './useAudioStore';
+import { useAudioStore, stopAllPolling, failedEngines } from './useAudioStore';
 import { LibraryEntry } from '../types';
 
 describe('useAudioStore', () => {
@@ -140,6 +140,71 @@ describe('useAudioStore', () => {
       const state = useAudioStore.getState();
       expect(state.toasts.length).toBeGreaterThan(0);
       expect(state.toasts[0].type).toBe('error');
+    });
+  });
+
+  describe('Engine failures and job polling', () => {
+    const jsonResponse = (body: unknown, ok = true) =>
+      Promise.resolve({ ok, json: () => Promise.resolve(body) } as Response);
+
+    it('names failed engines and returns null when all succeeded', () => {
+      expect(failedEngines(null)).toBeNull();
+      expect(failedEngines({ engine_errors: {} } as never)).toBeNull();
+      expect(failedEngines({ engine_errors: { key: 'down', chords: 'down' } } as never)).toBe('key, chords');
+    });
+
+    it('reports a failed batch job instead of staying in the analyzing state', async () => {
+      vi.useFakeTimers();
+      try {
+        const fetchMock = vi.fn((url: string) => {
+          if (url.endsWith('/api/upload')) return jsonResponse({ id: '1', filename: 'a.wav' });
+          if (url.endsWith('/api/library')) return jsonResponse([]);
+          if (url.endsWith('/api/analyze/batch')) return jsonResponse({ job_ids: ['job-1'] });
+          if (url.endsWith('/api/jobs/job-1')) return jsonResponse({ status: 'FAILURE', error: 'boom' });
+          return jsonResponse({});
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        vi.stubGlobal('URL', { ...URL, createObjectURL: () => 'blob:x', revokeObjectURL: () => {} });
+
+        await useAudioStore.getState().addAudioFiles([new File(['x'], 'a.wav')]);
+        await vi.advanceTimersByTimeAsync(2100);
+
+        const state = useAudioStore.getState();
+        expect(state.isAnalyzing).toBe(false);
+        expect(state.processing).toBe(false);
+        const messages = state.toasts.map((t) => t.message);
+        expect(messages).toContain('Analysis failed: boom');
+        expect(messages).toContain('Batch finished: 1 of 1 file(s) failed.');
+      } finally {
+        vi.useRealTimers();
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it('stops polling jobs that never finish after the timeout', async () => {
+      vi.useFakeTimers();
+      try {
+        vi.stubGlobal('fetch', vi.fn((url: string) => {
+          if (url.endsWith('/api/upload')) return jsonResponse({ id: '1', filename: 'a.wav' });
+          if (url.endsWith('/api/library')) return jsonResponse([]);
+          if (url.endsWith('/api/analyze/batch')) return jsonResponse({ job_ids: ['job-1'] });
+          return jsonResponse({ status: 'PENDING' });
+        }));
+        vi.stubGlobal('URL', { ...URL, createObjectURL: () => 'blob:x', revokeObjectURL: () => {} });
+
+        await useAudioStore.getState().addAudioFiles([new File(['x'], 'a.wav')]);
+        // Just past the 30 minute timeout, before the resulting toast auto-dismisses
+        await vi.advanceTimersByTimeAsync(30 * 60 * 1000 + 4000);
+
+        const state = useAudioStore.getState();
+        expect(state.isAnalyzing).toBe(false);
+        expect(state.toasts.map((t) => t.message)).toContain(
+          '1 analysis job(s) did not finish in time. Check the service status.'
+        );
+      } finally {
+        vi.useRealTimers();
+        vi.unstubAllGlobals();
+      }
     });
   });
 });

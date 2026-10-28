@@ -68,10 +68,6 @@ def analyze(request: AnalyzeRequest):
                 except Exception as ex:
                     print(f"Error parsing chord segment {seg}: {ex}")
 
-        # Fallback if no chords detected
-        if not chord_segments:
-            chord_segments.append(ChordSegment(start=0.0, end=1.0, chord="N"))
-
         return ChordResponse(chords=chord_segments)
 
     except Exception as e:

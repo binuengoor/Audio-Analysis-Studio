@@ -26,9 +26,11 @@ export const ToastContainer: React.FC = () => {
         return (
           <div
             key={toast.id}
+            role={toast.type === 'error' ? 'alert' : 'status'}
+            aria-live={toast.type === 'error' ? 'assertive' : 'polite'}
             className={`pointer-events-auto flex items-start gap-3 p-4 rounded-xl border shadow-xl backdrop-blur-md transition-all animate-in fade-in slide-in-from-bottom-2 ${bgColors}`}
           >
-            <div className="w-5 h-5 rounded-full flex items-center justify-center font-bold text-xs bg-white/10 shrink-0 mt-0.5">
+            <div aria-hidden="true" className="w-5 h-5 rounded-full flex items-center justify-center font-bold text-xs bg-white/10 shrink-0 mt-0.5">
               {icons}
             </div>
             <div className="flex-1 text-xs leading-relaxed font-medium">
@@ -36,6 +38,7 @@ export const ToastContainer: React.FC = () => {
             </div>
             <button
               onClick={() => removeToast(toast.id)}
+              aria-label="Dismiss notification"
               className="text-white/60 hover:text-white text-xs shrink-0 transition-colors"
             >
               ✕

@@ -15,9 +15,18 @@ from config import (
     DOWNLOADER_URL,
     MAX_FILE_SIZE_MB,
     STRETCH_WORKER_URL,
+    STUDIO_MAX_FILE_SIZE_MB,
     logger,
 )
-from utils import sanitize_filename, resolve_audio_file_path, unique_upload_name
+from utils import (
+    sanitize_filename,
+    resolve_audio_file_path,
+    unique_upload_name,
+    save_upload_stream,
+    file_sha256,
+    unique_filename,
+    UploadTooLargeError,
+)
 from models import (
     LibraryMetaRequest,
     normalize_tags,
@@ -36,7 +45,7 @@ from models import (
     StretchRequest,
     StretchResponse,
 )
-from processor import BatchProcessor
+from processor import BatchProcessor, WorkerError
 from metadata import generate_new_filename
 from library import LibraryManager
 from celery_tasks import celery_app, analyze_audio_task
@@ -118,22 +127,13 @@ async def intake_audio_url(
     if not entry:
         entry = library.add_entry(filename)
     else:
+        library.set_input(entry.id, filename)
         entry.input_path = filename
         entry.status = "uploaded"
-        with library._get_connection() as conn:
-            conn.execute(
-                "UPDATE library SET input_path = ?, status = 'uploaded' WHERE id = ?;",
-                (filename, entry.id),
-            )
-            conn.commit()
 
     job_id = None
     if request.auto_analyze:
-        with library._get_connection() as conn:
-            conn.execute(
-                "UPDATE library SET status = 'processing' WHERE id = ?;", (entry.id,)
-            )
-            conn.commit()
+        library.set_status(entry.id, "processing")
         entry.status = "processing"
         task = analyze_audio_task.delay(filename)
         job_id = task.id
@@ -159,17 +159,14 @@ async def stretch_audio(
     Applies pitch shifting (semitones/cents) and tempo time stretching (speed multiplier/target BPM)
     to an audio file using the Rubber Band Library v4.0 microservice.
     """
-    file_path = request.file_path
-    raw_filename = request.filename
-    filename = sanitize_filename(raw_filename) if raw_filename else None
-
-    if not file_path and filename:
-        file_path = resolve_audio_file_path(filename)
+    # Source files are only ever resolved server-side from the library's input/output folders
+    filename = sanitize_filename(request.filename)
+    file_path = resolve_audio_file_path(filename)
 
     if not file_path or not os.path.exists(file_path):
         raise HTTPException(
             status_code=404,
-            detail=f"Source audio file not found on disk: {filename or file_path}",
+            detail=f"Source audio file not found on disk: {filename}",
         )
 
     try:
@@ -231,49 +228,44 @@ async def upload_audio(
     file: UploadFile = File(...),
     library: LibraryManager = Depends(get_library),
 ):
-    """Stores an upload in the input dir, enforcing MAX_FILE_SIZE_MB and never overwriting a different file."""
-    tmp_path = os.path.join(INPUT_DIR, f".upload_{uuid.uuid4().hex}.part")
+    """Stores an upload in the input dir, enforcing STUDIO_MAX_FILE_SIZE_MB and never overwriting a different file."""
+    raw_name = file.filename or "upload.wav"
+    safe_filename = sanitize_filename(raw_name, fallback="upload.wav")
+    temp_path = os.path.join(INPUT_DIR, f".upload_{uuid.uuid4().hex}")
+    limit_mb = min(filter(lambda x: x is not None, [MAX_FILE_SIZE_MB, STUDIO_MAX_FILE_SIZE_MB]))
     try:
-        raw_name = file.filename or "upload.wav"
-        safe_filename = sanitize_filename(raw_name, fallback="upload.wav")
-        max_bytes = MAX_FILE_SIZE_MB * 1024 * 1024
+        digest = save_upload_stream(file.file, temp_path, limit_mb)
+    except UploadTooLargeError as e:
+        raise HTTPException(status_code=413, detail=str(e))
+    except Exception as e:
+        logger.error("Upload error: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
-        digest = hashlib.sha256()
-        size = 0
-        with open(tmp_path, "wb") as buffer:
-            while chunk := await file.read(1024 * 1024):
-                size += len(chunk)
-                if size > max_bytes:
-                    raise HTTPException(
-                        status_code=413,
-                        detail=f"File exceeds the {MAX_FILE_SIZE_MB} MB upload limit (set MAX_FILE_SIZE_MB to raise it).",
-                    )
-                digest.update(chunk)
-                buffer.write(chunk)
-        if size == 0:
-            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
-
-        final_name = unique_upload_name(INPUT_DIR, safe_filename, digest.hexdigest())
-        file_path = os.path.join(INPUT_DIR, final_name)
-        if os.path.exists(file_path):
-            os.remove(tmp_path)  # identical content already stored
+    try:
+        existing_path = os.path.join(INPUT_DIR, safe_filename)
+        if os.path.exists(existing_path):
+            if file_sha256(existing_path) == digest:
+                # Same file re-uploaded: keep the existing copy and its library entry
+                os.remove(temp_path)
+            else:
+                # Different content with the same name: never overwrite, store alongside
+                safe_filename = unique_filename(INPUT_DIR, safe_filename)
+                os.replace(temp_path, os.path.join(INPUT_DIR, safe_filename))
         else:
-            os.replace(tmp_path, file_path)
-        logger.info("Saved upload %s (%d bytes)", final_name, size)
+            os.replace(temp_path, existing_path)
 
-        entry = library.get_entry_by_filename(final_name)
+        file_size = os.path.getsize(os.path.join(INPUT_DIR, safe_filename))
+        logger.info("Saved upload %s (%d bytes)", safe_filename, file_size)
+
+        entry = library.get_entry_by_filename(safe_filename)
         if not entry:
-            entry = library.add_entry(final_name)
-            library.set_content_hash(entry.id, digest.hexdigest())
+            entry = library.add_entry(safe_filename)
+            library.set_content_hash(entry.id, digest)
         else:
-            entry.input_path = final_name
+            library.set_input(entry.id, safe_filename)
+            library.set_content_hash(entry.id, digest)
+            entry.input_path = safe_filename
             entry.status = "uploaded"
-            with library._get_connection() as conn:
-                conn.execute(
-                    "UPDATE library SET input_path = ?, status = 'uploaded' WHERE id = ?;",
-                    (final_name, entry.id),
-                )
-                conn.commit()
 
         return entry
     except HTTPException:
@@ -282,8 +274,11 @@ async def upload_audio(
         logger.error("Upload error: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
 
 
 @router.post("/api/analyze", response_model=AnalysisResult)
@@ -303,27 +298,36 @@ async def analyze_audio(
 
     filename = sanitize_filename(filename)
 
-    try:
-        entry = library.get_entry_by_filename(filename)
-        if not entry:
-            resolved_p = resolve_audio_file_path(filename)
-            if resolved_p and resolved_p.startswith(OUTPUT_DIR):
-                entry = library.add_entry(filename, input_path=None, output_path=filename)
-            else:
-                entry = library.add_entry(filename, input_path=filename, output_path=None)
-
-        result = await processor.process_file(filename)
-
-        if entry:
-            library.update_analysis(entry.id, AnalysisResult(**result))
-
-        return result
-    except FileNotFoundError:
+    resolved_path = resolve_audio_file_path(filename)
+    if not resolved_path:
         raise HTTPException(
             status_code=404,
             detail=f"Audio file '{filename}' not found in library storage",
         )
+
+    entry = library.get_entry_by_filename(filename)
+    if not entry:
+        if resolved_path.startswith(OUTPUT_DIR):
+            entry = library.add_entry(filename, input_path=None, output_path=filename)
+        else:
+            entry = library.add_entry(filename, input_path=filename, output_path=None)
+
+    library.set_status(entry.id, "processing")
+    try:
+        result = await processor.process_file(filename)
+        library.update_analysis(entry.id, AnalysisResult(**result))
+        return result
+    except FileNotFoundError:
+        library.set_status(entry.id, "error")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Audio file '{filename}' not found in library storage",
+        )
+    except WorkerError as e:
+        library.set_status(entry.id, "error")
+        raise HTTPException(status_code=502, detail=str(e))
     except Exception as e:
+        library.set_status(entry.id, "error")
         logger.error("Analyze error for %s: %s", filename, e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -343,13 +347,7 @@ async def analyze_batch(
         entry = library.get_entry_by_filename(filename)
         if not entry:
             entry = library.add_entry(filename)
-        if entry:
-            with library._get_connection() as conn:
-                conn.execute(
-                    "UPDATE library SET status = 'processing' WHERE id = ?;",
-                    (entry.id,),
-                )
-                conn.commit()
+        library.set_status(entry.id, "processing")
 
         task = analyze_audio_task.delay(filename)
         job_ids.append(task.id)
@@ -594,8 +592,6 @@ def clear_library(library: LibraryManager = Depends(get_library)):
         if os.path.isfile(p) and not f.startswith("."):
             os.remove(p)
 
-    with library._get_connection() as conn:
-        conn.execute("DELETE FROM library;")
-        conn.commit()
+    library.clear_all()
 
     return {"message": "Library cleared completely"}

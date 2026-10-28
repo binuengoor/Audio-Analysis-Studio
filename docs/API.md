@@ -24,8 +24,15 @@ All Public API endpoints under `/api/v1/*` require authentication using an API k
 X-API-Key: your_api_key_here
 ```
 
-* **Default Development Key**: `test_key` (configured via `API_KEY` environment variable in `docker-compose.yml` or backend `.env`).
-* If the header is omitted or invalid, the API returns `401 Unauthorized` or `403 Forbidden`.
+* **No key by default**: authentication is off until you set `API_KEY` (or `API_KEYS`) for the gateway, e.g. in a `.env` file next to `docker-compose.yml`. The examples below use `test_key` as a placeholder.
+* Once a key is set it is required on every gateway route, not only `/api/v1` (`/`, `/docs`, `/redoc` and `/openapi.json` stay public). `Authorization: Bearer <key>` is accepted too.
+* If the key is omitted or invalid, the API returns `401 Unauthorized`.
+
+### Engine Failures
+
+Analysis results never contain guessed values. When an engine fails:
+* **Single-engine endpoints** (`/analyze/bpm`, `/analyze/key`, `/analyze/chords`, `/analyze/structure`, `/analyze/quality`) return `502 Bad Gateway` with `{"detail": "...", "engine": "<name>"}`.
+* **Multi-engine endpoints** (`/analyze/basic`, `/analyze/full`, `/analyze/url`, ...) return `200` with the failed fields set to `null` and an `engine_errors` object such as `{"bpm": "HTTP 422: No stable beat detected in audio"}`. If every engine fails they return `502`.
 
 ---
 

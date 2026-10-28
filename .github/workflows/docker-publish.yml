@@ -18,15 +18,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: gateway, context: ./backend }
-          - { name: frontend, context: ./frontend }
-          - { name: bpm-worker, context: ./backend/workers/bpm_worker }
-          - { name: key-worker, context: ./backend/workers/key_worker }
-          - { name: chord-worker, context: ./backend/workers/chord_worker }
-          - { name: structure-worker, context: ./backend/workers/structure_worker }
-          - { name: quality-worker, context: ./backend/workers/quality_worker }
-          - { name: downloader-worker, context: ./backend/workers/downloader_worker }
-          - { name: stretch-worker, context: ./backend/workers/stretch_worker }
+          - image: gateway
+            context: ./backend
+          - image: frontend
+            context: ./frontend
+          - image: bpm-worker
+            context: ./backend/workers/bpm_worker
+          - image: key-worker
+            context: ./backend/workers/key_worker
+          - image: chord-worker
+            context: ./backend/workers/chord_worker
+          - image: structure-worker
+            context: ./backend/workers/structure_worker
+          - image: quality-worker
+            context: ./backend/workers/quality_worker
+          - image: downloader-worker
+            context: ./backend/workers/downloader_worker
+          - image: stretch-worker
+            context: ./backend/workers/stretch_worker
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -41,14 +50,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push ${{ matrix.name }}
+      - name: Build and push ${{ matrix.image }} image
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
+          file: ${{ matrix.context }}/Dockerfile
           push: true
           platforms: linux/amd64
-          cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
           tags: |
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/audio-analysis-studio-${{ matrix.name }}:latest
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/audio-analysis-studio-${{ matrix.name }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/audio-analysis-studio-${{ matrix.image }}:latest
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/audio-analysis-studio-${{ matrix.image }}:${{ github.sha }}
