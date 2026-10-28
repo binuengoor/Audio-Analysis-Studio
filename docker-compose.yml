@@ -119,12 +119,6 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:8005:8005"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8005/health', timeout=3)"]
-      interval: 20s
-      timeout: 5s
-      retries: 5
-      start_period: 180s
     volumes:
       - ./data:/app/data/shared_audio
     environment:
@@ -146,12 +140,6 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:8004:8004"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health', timeout=3)"]
-      interval: 20s
-      timeout: 5s
-      retries: 5
-      start_period: 180s
     volumes:
       - ./data:/app/data/shared_audio
     environment:
@@ -173,12 +161,6 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:8001:8001"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=3)"]
-      interval: 20s
-      timeout: 5s
-      retries: 5
-      start_period: 180s
     volumes:
       - ./data:/app/data/shared_audio
     environment:
@@ -200,12 +182,6 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:8002:8002"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health', timeout=3)"]
-      interval: 20s
-      timeout: 5s
-      retries: 5
-      start_period: 180s
     volumes:
       - ./data:/app/data/shared_audio
     environment:
@@ -228,12 +204,6 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:8003:8003"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health', timeout=3)"]
-      interval: 20s
-      timeout: 5s
-      retries: 5
-      start_period: 180s
     volumes:
       - ./data:/app/data/shared_audio
     environment:
@@ -255,12 +225,6 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:8007:8007"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8007/health', timeout=3)"]
-      interval: 20s
-      timeout: 5s
-      retries: 5
-      start_period: 180s
     volumes:
       - ./data:/app/data/shared_audio
     environment:
@@ -282,12 +246,6 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:8006:8006"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8006/health', timeout=3)"]
-      interval: 20s
-      timeout: 5s
-      retries: 5
-      start_period: 180s
     volumes:
       - ./data:/app/data/shared_audio
       - ./config:/app/cookies
@@ -298,6 +256,9 @@ services:
       - COOKIES_FILE=/app/cookies/cookies.txt
       # Set true to let the downloader fetch from LAN hosts (blocked by default to prevent SSRF)
       - ALLOW_PRIVATE_URLS=${ALLOW_PRIVATE_URLS:-false}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8006/health', timeout=4)"]
+      <<: *healthcheck-timing
     networks:
       - backend-net
 
